@@ -1,0 +1,315 @@
+{
+  "tab": "tobe",
+  "workspaceId": "ws-default",
+  "nodes": [
+    {
+      "id": "case",
+      "label": "Legal Case",
+      "kind": "Дело",
+      "layer": "Knowledge",
+      "nodeKind": "core",
+      "description": "Центральный граф дела"
+    },
+    {
+      "id": "client",
+      "label": "Client",
+      "kind": "Участник",
+      "layer": "Knowledge",
+      "nodeKind": "entity",
+      "description": "Истец или доверитель"
+    },
+    {
+      "id": "opponent",
+      "label": "Opponent",
+      "kind": "Участник",
+      "layer": "Knowledge",
+      "nodeKind": "entity",
+      "description": "Ответчик"
+    },
+    {
+      "id": "court",
+      "label": "Court",
+      "kind": "Орган",
+      "layer": "Knowledge",
+      "nodeKind": "entity",
+      "description": "Суд"
+    },
+    {
+      "id": "judge",
+      "label": "Judge",
+      "kind": "Участник",
+      "layer": "Knowledge",
+      "nodeKind": "entity",
+      "description": "Судья"
+    },
+    {
+      "id": "events",
+      "label": "Timeline",
+      "kind": "События",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Хронология"
+    },
+    {
+      "id": "facts",
+      "label": "Facts",
+      "kind": "Факты",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Юридически значимые факты"
+    },
+    {
+      "id": "claims",
+      "label": "Claims",
+      "kind": "Требования",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Исковые требования"
+    },
+    {
+      "id": "arguments",
+      "label": "Arguments",
+      "kind": "Аргументы",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Правовые позиции"
+    },
+    {
+      "id": "documents",
+      "label": "Documents",
+      "kind": "Документы",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Все документы"
+    },
+    {
+      "id": "contracts",
+      "label": "Contracts",
+      "kind": "Договоры",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Договоры"
+    },
+    {
+      "id": "letters",
+      "label": "Correspondence",
+      "kind": "Переписка",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Email, WhatsApp"
+    },
+    {
+      "id": "evidence",
+      "label": "Evidence",
+      "kind": "Доказательства",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Фото, видео, экспертизы"
+    },
+    {
+      "id": "laws",
+      "label": "Legislation",
+      "kind": "Нормы",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Законы"
+    },
+    {
+      "id": "practice",
+      "label": "Court Practice",
+      "kind": "Практика",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Судебная практика"
+    },
+    {
+      "id": "experts",
+      "label": "Expert Opinions",
+      "kind": "Экспертизы",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Заключения"
+    },
+    {
+      "id": "risks",
+      "label": "Risks",
+      "kind": "Риски",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Риски дела"
+    },
+    {
+      "id": "probability",
+      "label": "Outcome Prediction",
+      "kind": "Прогноз",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Вероятности"
+    },
+    {
+      "id": "strategy",
+      "label": "Strategy",
+      "kind": "Стратегия",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "План защиты"
+    },
+    {
+      "id": "actions",
+      "label": "Action Plan",
+      "kind": "План",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Следующие действия"
+    },
+    {
+      "id": "deadlines",
+      "label": "Deadlines",
+      "kind": "Сроки",
+      "layer": "Knowledge",
+      "nodeKind": "domain",
+      "description": "Процессуальные сроки"
+    },
+    {
+      "id": "reasoner",
+      "label": "Legal Reasoner",
+      "kind": "Сервис",
+      "layer": "Implementation",
+      "nodeKind": "service",
+      "description": "Логический вывод"
+    },
+    {
+      "id": "generator",
+      "label": "Document Generator",
+      "kind": "Сервис",
+      "layer": "Implementation",
+      "nodeKind": "service",
+      "description": "Подготовка документов"
+    },
+    {
+      "id": "copilot",
+      "label": "Legal Copilot",
+      "kind": "Платформа",
+      "layer": "Implementation",
+      "nodeKind": "service",
+      "description": "ИИ помощник"
+    }
+  ],
+  "edges": [
+    {
+      "source": "client",
+      "target": "case",
+      "label": "инициирует"
+    },
+    {
+      "source": "opponent",
+      "target": "case",
+      "label": "участник"
+    },
+    {
+      "source": "court",
+      "target": "case",
+      "label": "рассматривает"
+    },
+    {
+      "source": "judge",
+      "target": "court",
+      "label": "ведёт"
+    },
+    {
+      "source": "events",
+      "target": "case",
+      "label": "хронология"
+    },
+    {
+      "source": "facts",
+      "target": "events",
+      "label": "следуют из"
+    },
+    {
+      "source": "claims",
+      "target": "facts",
+      "label": "основаны на"
+    },
+    {
+      "source": "arguments",
+      "target": "claims",
+      "label": "обосновывают"
+    },
+    {
+      "source": "documents",
+      "target": "facts",
+      "label": "подтверждают"
+    },
+    {
+      "source": "contracts",
+      "target": "documents",
+      "label": "вид"
+    },
+    {
+      "source": "letters",
+      "target": "documents",
+      "label": "вид"
+    },
+    {
+      "source": "evidence",
+      "target": "facts",
+      "label": "доказывают"
+    },
+    {
+      "source": "experts",
+      "target": "evidence",
+      "label": "подтверждают"
+    },
+    {
+      "source": "laws",
+      "target": "arguments",
+      "label": "основание"
+    },
+    {
+      "source": "practice",
+      "target": "arguments",
+      "label": "поддерживает"
+    },
+    {
+      "source": "risks",
+      "target": "claims",
+      "label": "ослабляют"
+    },
+    {
+      "source": "probability",
+      "target": "strategy",
+      "label": "оценивает"
+    },
+    {
+      "source": "strategy",
+      "target": "case",
+      "label": "определяет"
+    },
+    {
+      "source": "actions",
+      "target": "strategy",
+      "label": "реализует"
+    },
+    {
+      "source": "deadlines",
+      "target": "actions",
+      "label": "ограничивают"
+    },
+    {
+      "source": "reasoner",
+      "target": "case",
+      "label": "анализирует"
+    },
+    {
+      "source": "generator",
+      "target": "strategy",
+      "label": "готовит документы"
+    },
+    {
+      "source": "copilot",
+      "target": "reasoner",
+      "label": "использует"
+    }
+  ]
+}

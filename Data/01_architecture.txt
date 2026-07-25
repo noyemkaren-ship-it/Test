@@ -1,0 +1,4 @@
+Graph Platform состоит из движков Graph Engine, FSM Engine, Review Engine, Ontology Engine, RAG Engine, Visualization Engine и LLM Gateway.
+PI Platform Interactive находится выше React Flow и отвечает за панели, инспекторы и сценарии.
+Принцип Default First Configure Second Extend Third означает старт с дефолтной онтологии и только аддитивные расширения.
+Self-hosting означает что платформа хранит знания о себе в собственном графе.

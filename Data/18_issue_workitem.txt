@@ -1,0 +1,1 @@
+Issue это зонтичная сущность уровня знания или процесса с длинным жизненным циклом. Work Item это исполняемая единица под Issue: Task Defect ChangeRequest KnowledgeDefect. У Work Item свой FSM. У Issue метрики покрытия и качества знаний.

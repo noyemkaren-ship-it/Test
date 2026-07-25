@@ -1,0 +1,5 @@
+Graph Copilot использует цепочку UI Chat Context Builder RAG LLM Gateway.
+LLM не должна работать с полным графом напрямую.
+Context Builder собирает минимальный подграф по роли Interest Scope и выбранным узлам.
+Каждый вопрос сохраняется как объект Question для аналитики.
+При недоступности внешнего LLM включается offline RNN ассистент.

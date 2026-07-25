@@ -1,0 +1,2 @@
+# Graph Platform Offline AI v3 has no third-party Python dependencies.
+# Python 3.10+ is sufficient.

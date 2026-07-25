@@ -1,0 +1,4 @@
+Work Item является предком Task Defect ReviewComment Risk TechnicalDebt ChangeRequest Improvement KnowledgeDefect.
+Knowledge Defect это отсутствующая сущность связь устаревшая документация разрыв трассируемости отсутствие владельца.
+FSM Engine задаёт допустимые переходы статусов для каждого типа Work Item.
+Task и Defect имеют разные жизненные циклы и метрики.

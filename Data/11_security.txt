@@ -1,0 +1,3 @@
+Graph Platform v3 разделяет публичное чтение и защищённые изменения. Опубликованные public-домены и их граф можно читать без JWT через /api/public/domains и связанные read-only endpoints. Private-домены, workspace, шаблоны, пользователи и любые изменяющие операции требуют авторизации и проверки membership/role.
+Пароли хранятся как bcrypt hash. JWT_SECRET, API_KEY и production bootstrap password задаются через переменные окружения. В production backend отказывается стартовать с dev-секретами.
+API использует ограничение размера тела, rate limiting, CORS и security headers. Offline AI работает локально; внешний LLM используется только если явно задан API key, а при ошибке система возвращается к offline engine.

@@ -1,0 +1,5 @@
+Actor обобщает Person и бывает Human AIAgent Service ExternalSystem.
+Роль привязывается к связи Actor Object а не глобально к персоне.
+Заказчик не равен Owner это разные роли.
+Interest Scope вычисляется из графа автоматически и не хранится как атрибут.
+Interest Scope используется для UI уведомлений поиска и контекста LLM.

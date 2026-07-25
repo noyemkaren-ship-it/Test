@@ -1,0 +1,28 @@
+# Dependencies / builds
+**/node_modules/
+frontend/dist/
+
+# Runtime data
+backend/data/*.db
+backend/data/*.db-*
+backend/data/db.json
+
+# Secrets
+.env
+**/.env
+!**/.env.example
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+
+# OS / editors
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+
+# Logs / temp
+*.log
+*.pid

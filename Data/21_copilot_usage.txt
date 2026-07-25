@@ -1,0 +1,1 @@
+Graph Copilot отвечает на вопросы о графе Interest Scope Control Knowledge Pipe Actor Review. При недоступности DeepSeek включается локальная RNN. Контекст собирает Context Builder из подграфа и RAG chunks.
