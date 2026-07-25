@@ -85,6 +85,138 @@ def main() -> int:
     assert isinstance(nodes, list)
     ok("read own graph")
 
+    request("POST", "/graph/nodes", {"label": "guest-forbidden"}, headers={"X-Graph-Id": gid}, expected=(401,))
+    ok("guest node mutation blocked")
+
+    _, first = request("POST", "/graph/nodes", {
+        "label": "Smoke API Gateway",
+        "kind": "Service",
+        "layer": "Implementation",
+        "nodeKind": "service",
+        "description": "Created by reproducible editor smoke test",
+        "tab": "tobe",
+        "position": {"x": 125.5, "y": 240.25},
+    }, headers=graph_headers, expected=(201,))
+    first_id = first["id"]
+    assert first["data"]["position"] == {"x": 125.5, "y": 240.25}
+    ok("create node with stored layout")
+
+    _, updated = request("PATCH", f"/graph/nodes/{first_id}", {
+        "label": "Smoke API Gateway v2",
+        "description": "Updated directly in the graph editor",
+        "position": {"x": 480, "y": 315},
+    }, headers=graph_headers)
+    assert updated["label"].endswith("v2") and updated["data"]["position"] == {"x": 480, "y": 315}
+    _, persisted_nodes = request("GET", "/graph/nodes?tab=tobe", headers=graph_headers)
+    persisted = next(node for node in persisted_nodes if node["id"] == first_id)
+    assert persisted["data"]["position"] == {"x": 480, "y": 315}
+    ok("edit node and persist drag layout")
+
+    _, second = request("POST", "/graph/nodes", {
+        "label": "Smoke Knowledge Base",
+        "kind": "Repository",
+        "layer": "Knowledge",
+        "nodeKind": "domain",
+        "tab": "tobe",
+        "position": {"x": 760, "y": 315},
+    }, headers=graph_headers, expected=(201,))
+    second_id = second["id"]
+    ok("create second node")
+
+    _, edge = request("POST", "/graph/edges", {
+        "source": first_id,
+        "target": second_id,
+        "label": "reads",
+        "tab": "tobe",
+    }, headers=graph_headers, expected=(201,))
+    edge_id = edge["id"]
+    assert edge["source"] == first_id and edge["target"] == second_id
+    ok("create relation between graph nodes")
+
+    request("POST", "/graph/edges", {
+        "source": first_id,
+        "target": "core",
+        "label": "forbidden cross-graph relation",
+        "tab": "tobe",
+    }, headers=graph_headers, expected=(400,))
+    ok("cross-graph relation blocked")
+
+    _, updated_edge = request("PATCH", f"/graph/edges/{edge_id}", {"label": "queries"}, headers=graph_headers)
+    assert updated_edge["label"] == "queries"
+    _, persisted_edges = request("GET", "/graph/edges?tab=tobe", headers=graph_headers)
+    assert any(item["id"] == edge_id and item["label"] == "queries" for item in persisted_edges)
+    ok("edit and read relation")
+
+    other_email = f"smoke-other-{stamp}@example.test"
+    _, other_auth = request("POST", "/auth/register", {"email": other_email, "password": password, "name": "Other User"}, expected=(201,))
+    other_headers = {"Authorization": f"Bearer {other_auth['token']}", "X-Graph-Id": gid}
+    request("GET", "/graph/nodes", headers=other_headers, expected=(403,))
+    request("PATCH", f"/graph/nodes/{first_id}", {"label": "intrusion"}, headers=other_headers, expected=(403,))
+    ok("cross-workspace private graph isolation")
+
+    _, machines = request("GET", "/fsm/machines", headers=graph_headers)
+    assert any(machine["type"] == "Task" for machine in machines)
+    _, transition = request("POST", "/fsm/Task/transition", {"from": "open", "event": "START"}, headers=graph_headers)
+    assert transition == {"ok": True, "from": "open", "to": "in_progress", "event": "START"}
+    ok("FSM machine and transition")
+
+    _, ontology = request("GET", "/ontology", headers=graph_headers)
+    assert ontology["principle"].startswith("Default First")
+    _, extended = request("POST", "/ontology/extend", {
+        "id": "smoke-extension",
+        "nodeTypes": [{"id": "smoke-type", "label": "Smoke Type", "layer": "Knowledge"}],
+    }, headers=graph_headers)
+    assert any(item["id"] == "smoke-type" for item in extended["nodeTypes"])
+    ok("default ontology and graph-scoped extension")
+
+    rag_text = "The smoke gateway queries the graph knowledge base and returns source-aware answers for platform verification."
+    _, ingested = request("POST", "/rag/ingest", {
+        "title": "Smoke editor evidence",
+        "content": rag_text,
+        "nodeIds": [first_id, second_id],
+    }, headers=graph_headers, expected=(201,))
+    assert ingested["chunks"] >= 1
+    _, hits = request("GET", "/rag/search?q=source-aware%20gateway", headers=graph_headers)
+    assert hits and first_id in hits[0]["nodeIds"]
+    ok("RAG ingest and graph-scoped retrieval")
+
+    request("POST", "/reviews", {"text": "Smoke review for the edited graph"}, headers=graph_headers, expected=(201,))
+    _, reviews = request("GET", "/reviews", headers=graph_headers)
+    assert any(item["text"] == "Smoke review for the edited graph" for item in reviews)
+    ok("graph review create and read")
+
+    _, template = request("POST", f"/workspaces/{own_ws}/templates", {
+        "name": "Smoke reproducible template",
+        "description": "Snapshot created by smoke test",
+    }, headers=graph_headers, expected=(201,))
+    template_id = template["id"]
+    _, template_data = request("GET", f"/templates/{template_id}", headers=graph_headers)
+    template_node = next(node for node in template_data["snapshot"]["nodes"] if node["id"] == first_id)
+    assert template_node["data"]["position"] == {"x": 480, "y": 315}
+    ok("template snapshot preserves graph and layout")
+
+    _, copilot = request("POST", "/copilot/chat", {
+        "message": "What does the Smoke API Gateway query?",
+        "selectedNodeIds": [first_id],
+        "tab": "tobe",
+    }, headers={**graph_headers, "X-Session-Id": f"smoke-{stamp}"})
+    assert copilot["answer"] and copilot["offline"] is True and first_id in copilot["sources"]["nodes"]
+    ok("Copilot receives selected graph and RAG context")
+
+    request("DELETE", f"/graph/edges/{edge_id}", headers=graph_headers)
+    _, remaining_edges = request("GET", "/graph/edges?tab=tobe", headers=graph_headers)
+    assert not any(item["id"] == edge_id for item in remaining_edges)
+    ok("delete relation")
+
+    request("DELETE", f"/graph/nodes/{second_id}", headers=graph_headers)
+    request("DELETE", f"/graph/nodes/{first_id}", headers=graph_headers)
+    _, remaining_nodes = request("GET", "/graph/nodes?tab=tobe", headers=graph_headers)
+    assert not any(item["id"] in {first_id, second_id} for item in remaining_nodes)
+    ok("delete nodes with relation cleanup")
+
+    request("DELETE", f"/templates/{template_id}", headers=graph_headers)
+    ok("cleanup template")
+
     request("DELETE", f"/graphs/{gid}", headers=create_headers, expected=(200,))
     ok("cleanup own graph")
 

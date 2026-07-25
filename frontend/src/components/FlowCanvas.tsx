@@ -7,8 +7,10 @@ import {
   MarkerType,
   ReactFlowProvider,
   useReactFlow,
+  useNodesState,
   Handle,
-  Position
+  Position,
+  type Connection
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { expandFocus, getPersonaFocus } from '../graphFocus'
@@ -81,7 +83,22 @@ const nodeTypes = {
   default: NodeView
 }
 
-function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeTab, relationDepth = 1, motion = true, onPin }: any) {
+function GraphInner({
+  nodes,
+  edges,
+  pinned,
+  selectedEdgeId,
+  highlightIds = [],
+  roleView,
+  activeTab,
+  relationDepth = 1,
+  motion = true,
+  canEdit = false,
+  onPin,
+  onSelectEdge,
+  onMoveNode,
+  onConnectNodes
+}: any) {
   const { fitView } = useReactFlow()
   const tab = activeTab || 'tobe'
 
@@ -111,7 +128,9 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
     return nodes.map((n: any, i: number) => {
       let highlight = ''
       if (focus.size > 0) highlight = focus.has(n.id) ? (n.id === pinned ? 'root' : 'hl') : 'dim'
-      const pos = layout[n.id] || { x: 40 + (i % 4) * 230, y: 40 + Math.floor(i / 4) * 130 }
+      const stored = n.data?.position
+      const hasStoredPosition = Number.isFinite(Number(stored?.x)) && Number.isFinite(Number(stored?.y))
+      const pos = hasStoredPosition ? { x: Number(stored.x), y: Number(stored.y) } : (layout[n.id] || { x: 40 + (i % 4) * 230, y: 40 + Math.floor(i / 4) * 130 })
       return {
         id: n.id,
         type: (n.nodeKind && (nodeTypes as any)[n.nodeKind]) ? n.nodeKind : 'default',
@@ -131,12 +150,18 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
     })
   }, [nodes, pinned, tab, focus])
 
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(rfNodes)
+
+  useEffect(() => {
+    setFlowNodes(rfNodes)
+  }, [rfNodes, setFlowNodes])
+
   const rfEdges = useMemo(() => {
     return validEdges.map((e: any) => {
       const active = focus.size > 0 && focus.has(e.source) && focus.has(e.target)
       const dimmed = focus.size > 0 && !active
       return {
-        id: `${tab}-${e.id || e.source + '-' + e.target}`,
+        id: e.id || `${tab}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
         label: dimmed ? undefined : e.label || undefined,
@@ -151,6 +176,7 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
         labelBgStyle: { fill: 'var(--graph-label-bg)', fillOpacity: 0.94 },
         labelBgPadding: [5, 3] as [number, number],
         labelBgBorderRadius: 4,
+        selected: e.id === selectedEdgeId,
         markerEnd: {
           type: MarkerType.ArrowClosed,
           color: active ? 'var(--graph-edge-active)' : 'var(--graph-edge)',
@@ -159,27 +185,43 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
         }
       }
     })
-  }, [validEdges, focus, tab, motion])
+  }, [validEdges, focus, tab, motion, selectedEdgeId])
 
   const onNodeClick = useCallback(
     (_: any, node: any) => onPin(pinned === node.id ? null : node.id),
     [pinned, onPin]
   )
 
+  const onEdgeClick = useCallback(
+    (_: any, edge: any) => {
+      onSelectEdge?.(edge.id === selectedEdgeId ? null : edge.id)
+      onPin(null)
+    },
+    [onPin, onSelectEdge, selectedEdgeId]
+  )
+
+  const onConnect = useCallback((connection: Connection) => {
+    if (canEdit && connection.source && connection.target) onConnectNodes?.(connection)
+  }, [canEdit, onConnectNodes])
+
   return (
     <ReactFlow
-      nodes={rfNodes}
+      nodes={flowNodes}
       edges={rfEdges}
       nodeTypes={nodeTypes}
+      onNodesChange={onNodesChange}
       onNodeClick={onNodeClick}
-      onPaneClick={() => onPin(null)}
+      onNodeDragStop={(_, node) => onMoveNode?.(node.id, node.position)}
+      onEdgeClick={onEdgeClick}
+      onConnect={onConnect}
+      onPaneClick={() => { onPin(null); onSelectEdge?.(null) }}
       fitView
       fitViewOptions={{ padding: 0.18, maxZoom: 1 }}
       minZoom={0.15}
       maxZoom={1.5}
       proOptions={{ hideAttribution: true }}
-      nodesConnectable={false}
-      edgesFocusable={false}
+      nodesConnectable={canEdit}
+      edgesFocusable
       nodesDraggable
       panOnDrag
       zoomOnScroll

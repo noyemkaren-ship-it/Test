@@ -1,6 +1,7 @@
 import { apiUrl } from './config'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FlowCanvas from './components/FlowCanvas'
+import GraphEditorPanel from './components/GraphEditorPanel'
 import ChatSidePanel from './components/ChatSidePanel'
 import Glossary from './components/Glossary'
 import PlatformPanel from './components/PlatformPanel'
@@ -42,6 +43,7 @@ export default function App() {
   const [nodes, setNodes] = useState<any[]>([])
   const [edges, setEdges] = useState<any[]>([])
   const [pinned, setPinned] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [highlightIds, setHighlightIds] = useState<string[]>([])
   const [layer, setLayer] = useState('all')
   const [roleView, setRoleView] = useState<string | null>(null)
@@ -54,6 +56,7 @@ export default function App() {
   const [health, setHealth] = useState<any>(null)
   const [search, setSearch] = useState('')
   const [present, setPresent] = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
   const [toast, setToast] = useState('')
   const [graphKey, setGraphKey] = useState(0)
   const [graphLoading, setGraphLoading] = useState(false)
@@ -152,6 +155,7 @@ export default function App() {
   async function loadGraph(nextTab = tab) {
     setGraphLoading(true)
     setPinned(null)
+    setSelectedEdgeId(null)
     setHighlightIds([])
     try {
       const params = new URLSearchParams({ tab: nextTab })
@@ -170,6 +174,82 @@ export default function App() {
       setEdges([])
     } finally {
       setGraphLoading(false)
+    }
+  }
+
+  async function writeApi(path: string, method: string, body?: any) {
+    const res = await fetch(apiUrl(path), {
+      method,
+      headers: headers(),
+      body: body === undefined ? undefined : JSON.stringify(body)
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || tr('Не удалось сохранить изменение', 'Unable to save the change'))
+    return data
+  }
+
+  async function createGraph(name: string) {
+    const created = await writeApi('/api/graphs', 'POST', { name, visibility: 'private', description: tr('Рабочий граф команды', 'Team workspace graph') })
+    const editable = { ...created, canEdit: true }
+    setGraphs(current => [editable, ...current.filter(graph => graph.id !== editable.id)])
+    setActiveGraphId(editable.id)
+    showToast(tr('Рабочий граф создан', 'Workspace graph created'))
+  }
+
+  async function createNode(input: any) {
+    const created = await writeApi('/api/graph/nodes', 'POST', input)
+    setNodes(current => [...current, created])
+    setPinned(created.id)
+    setHighlightIds([created.id])
+    showToast(tr('Узел добавлен', 'Node added'))
+  }
+
+  async function updateNode(id: string, input: any) {
+    const updated = await writeApi(`/api/graph/nodes/${encodeURIComponent(id)}`, 'PATCH', input)
+    setNodes(current => current.map(node => node.id === id ? updated : node))
+    showToast(tr('Узел сохранён', 'Node saved'))
+  }
+
+  async function deleteNode(id: string) {
+    await writeApi(`/api/graph/nodes/${encodeURIComponent(id)}`, 'DELETE')
+    setNodes(current => current.filter(node => node.id !== id))
+    setEdges(current => current.filter(edge => edge.source !== id && edge.target !== id))
+    setPinned(null)
+    setHighlightIds([])
+    showToast(tr('Узел и его связи удалены', 'Node and its relations deleted'))
+  }
+
+  async function createEdge(input: any) {
+    const created = await writeApi('/api/graph/edges', 'POST', input)
+    setEdges(current => [...current, created])
+    setSelectedEdgeId(created.id)
+    setPinned(null)
+    showToast(tr('Связь добавлена', 'Relation added'))
+  }
+
+  async function updateEdge(id: string, input: any) {
+    const updated = await writeApi(`/api/graph/edges/${encodeURIComponent(id)}`, 'PATCH', input)
+    setEdges(current => current.map(edge => edge.id === id ? updated : edge))
+    showToast(tr('Связь сохранена', 'Relation saved'))
+  }
+
+  async function deleteEdge(id: string) {
+    await writeApi(`/api/graph/edges/${encodeURIComponent(id)}`, 'DELETE')
+    setEdges(current => current.filter(edge => edge.id !== id))
+    setSelectedEdgeId(null)
+    showToast(tr('Связь удалена', 'Relation deleted'))
+  }
+
+  async function moveNode(id: string, position: { x: number; y: number }) {
+    const before = nodes.find(node => node.id === id)
+    if (!before || !activeGraph?.canEdit) return
+    setNodes(current => current.map(node => node.id === id ? { ...node, data: { ...(node.data || {}), position } } : node))
+    try {
+      const updated = await writeApi(`/api/graph/nodes/${encodeURIComponent(id)}`, 'PATCH', { position })
+      setNodes(current => current.map(node => node.id === id ? updated : node))
+    } catch (e) {
+      setNodes(current => current.map(node => node.id === id ? before : node))
+      showToast(e instanceof Error ? e.message : tr('Позиция не сохранена', 'Position was not saved'))
     }
   }
 
@@ -236,6 +316,7 @@ export default function App() {
   }, [edges, visibleNodes])
 
   const selectedNode = nodes.find(n => n.id === pinned) || null
+  const selectedEdge = edges.find(e => e.id === selectedEdgeId) || null
   const personaCounts = useMemo(() => Object.fromEntries(personas.map(persona => [
     persona.id,
     persona.id === 'all'
@@ -295,7 +376,7 @@ export default function App() {
       {!present && <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onSettings={() => go('settings')} onHome={() => go('app')} />}
 
       <main className="app-main product-main">
-	        {!present && (
+	        {!present && showOverview && (
 	          <section className="product-hero">
 	            <div className="hero-copy">
 	              <div className="hero-kicker"><span className="pulse-dot" /> Knowledge Intelligence Platform</div>
@@ -333,7 +414,7 @@ export default function App() {
 	          </section>
 	        )}
 
-        {!present && (
+        {!present && showOverview && (
 	          <section className="domain-section" aria-labelledby="domains-title">
 	            <div className="section-heading">
 	              <div><p className="eyebrow">Public knowledge catalog</p><h2 id="domains-title">{tr('Домены знаний', 'Knowledge domains')}</h2></div>
@@ -354,7 +435,7 @@ export default function App() {
 	          </section>
 	        )}
 
-	        {!present && (
+	        {!present && showOverview && (
 	          <section className="perspective-story">
 	            <div className="story-photo">
 	              <img src="/images/graph-connections.webp" alt={tr('Рука выбирает связь в графе знаний', 'A hand selects a relation in a knowledge graph')} loading="lazy" decoding="async" />
@@ -434,6 +515,7 @@ export default function App() {
               </div>
               <div className="stage-actions">
 	                {graphLoading && <span className="loading-pill">{tr('Синхронизация…', 'Syncing…')}</span>}
+	                {!present && <button type="button" className={`btn-quiet ${showOverview ? 'active' : ''}`} onClick={() => setShowOverview(value => !value)}>{showOverview ? tr('Скрыть обзор', 'Hide overview') : tr('О платформе', 'About')}</button>}
 	                <button type="button" className="btn-quiet" onClick={() => setPresent(!present)}>{present ? tr('Выйти', 'Exit') : tr('Презентация', 'Present')}</button>
 	              </div>
 	            </div>
@@ -466,6 +548,27 @@ export default function App() {
 	              </div>
 	            )}
 
+                {!present && (
+                  <GraphEditorPanel
+                    nodes={nodes}
+                    selectedNode={selectedNode}
+                    selectedEdge={selectedEdge}
+                    activeGraph={activeGraph}
+                    isLoggedIn={!!token}
+                    canEdit={!!activeGraph?.canEdit}
+                    tab={tab}
+                    onLogin={() => go('login')}
+                    onCreateGraph={createGraph}
+                    onCreateNode={createNode}
+                    onUpdateNode={updateNode}
+                    onDeleteNode={deleteNode}
+                    onCreateEdge={createEdge}
+                    onUpdateEdge={updateEdge}
+                    onDeleteEdge={deleteEdge}
+                    onClearSelection={() => { setPinned(null); setSelectedEdgeId(null); setHighlightIds([]) }}
+                  />
+                )}
+
 	            <div className={`flow-wrap premium-flow ${present ? 'flow-present' : ''}`}>
 	              {!visibleNodes.length ? (
 	                <div className="flow-empty premium-empty"><span>◇</span><strong>{tr('Нет узлов в этой проекции', 'No nodes in this perspective')}</strong><small>{tr('Смените домен, состояние или слой.', 'Change the domain, state or layer.')}</small></div>
@@ -480,7 +583,12 @@ export default function App() {
 	                  activeTab={tab}
 	                  relationDepth={relationDepth}
 	                  motion={motion}
-                  onPin={(id: string | null) => { setPinned(id); setHighlightIds(id ? [id] : []) }}
+                  canEdit={!!activeGraph?.canEdit}
+                  selectedEdgeId={selectedEdgeId}
+                  onPin={(id: string | null) => { setPinned(id); setSelectedEdgeId(null); setHighlightIds(id ? [id] : []) }}
+                  onSelectEdge={(id: string | null) => { setSelectedEdgeId(id); if (id) { setPinned(null); setHighlightIds([]) } }}
+                  onMoveNode={moveNode}
+                  onConnectNodes={(connection: any) => createEdge({ source: connection.source, target: connection.target, tab, label: '' }).catch(e => showToast(e.message))}
                 />
               )}
             </div>

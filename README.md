@@ -14,6 +14,7 @@ Graph Platform — self-hosted knowledge operating system: независимы�
 - **Admin Console** — обзор системы, домены и visibility, Knowledge Package import/export, users/roles, AI history и health.
 - **Workspace Library** — проекты, Actor↔Project bindings, snapshots/templates и независимое клонирование проекта.
 - **Default First ontology** — новый граф сразу получает рабочий профиль, который можно расширять.
+- **Full graph editor** — создание, изменение и удаление узлов/связей прямо в React Flow; drag layout сохраняется в SQLite.
 
 Подробная архитектура, API, security model, deploy и форматы данных описаны в `info.pdf`.
 
@@ -160,6 +161,14 @@ Admin Console умеет импортировать пакет без заран
 ```
 
 ## Проверки
+
+Полный воспроизводимый аудит на временной базе:
+
+```bash
+./scripts/audit.sh
+```
+
+Подробности и перечень проверяемых сценариев: `AUDIT.md`. Подтверждаемая история текущего архива и границы Git provenance: `PROVENANCE.md`.
 
 ```bash
 # Backend source syntax

@@ -156,7 +156,9 @@ export function extendProfile(current, extension) {
   if (extension.name) profile.name = extension.name;
   if (extension.version) profile.version = extension.version;
   
-  return profile;
+  // Materialize the newly appended extension immediately. Previously the
+  // extension was persisted but its types became visible only after a reload.
+  return loadProfile(profile);
 }
 
 export function validateExtension(extension) {
