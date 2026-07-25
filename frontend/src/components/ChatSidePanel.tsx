@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiUrl } from '../config'
+import { usePreferences } from '../preferences'
 
 type Message = {
   role: 'user' | 'bot'
@@ -9,18 +10,21 @@ type Message = {
   confidence?: number | null
 }
 
-const SUGGESTIONS = [
-  'Объясни этот граф как руководителю',
-  'Что здесь является главным риском?',
-  'Как работает Interest Scope?',
-  'Чем Заказчик отличается от Owner?'
-]
-
 export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
+  const { tr } = usePreferences()
+  const suggestions = [
+    tr('Объясни этот граф как руководителю', 'Explain this graph to an executive'),
+    tr('Что здесь является главным риском?', 'What is the main risk here?'),
+    tr('Как работает Interest Scope?', 'How does Interest Scope work?'),
+    tr('Что важно для разработчика?', 'What matters to a developer?')
+  ]
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'bot',
-      text: 'Я Graph Copilot. Вижу контекст текущего графа и RAG. Если внешний LLM недоступен, переключаюсь на локальный hybrid AI без отправки данных наружу.',
+      text: tr(
+        'Я Graph Copilot. Вижу контекст текущего графа и RAG. Если внешний LLM недоступен, переключаюсь на локальный hybrid AI без отправки данных наружу.',
+        'I’m Graph Copilot. I can see the current graph and RAG context. If the external LLM is unavailable, I switch to local hybrid AI without sending data outside.'
+      ),
       model: 'Graph Copilot'
     }
   ])
@@ -46,7 +50,7 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
       if (!res.ok) throw new Error(data.error || 'Copilot unavailable')
       setMessages(current => [...current, {
         role: 'bot',
-        text: data.answer || 'Ответ пуст.',
+        text: data.answer || tr('Ответ пуст.', 'The answer is empty.'),
         model: data.model || 'local',
         offline: !!data.offline,
         confidence: data.confidence
@@ -55,8 +59,8 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
       setMessages(current => [...current, {
         role: 'bot',
         text: error?.message === 'Copilot unavailable'
-          ? 'Copilot сейчас недоступен.'
-          : 'Не удалось связаться с Copilot. Проверьте backend и offline-ai service.',
+          ? tr('Copilot сейчас недоступен.', 'Copilot is currently unavailable.')
+          : tr('Не удалось связаться с Copilot. Проверьте backend и offline-ai service.', 'Could not reach Copilot. Check the backend and offline AI service.'),
         model: 'connection-error'
       }])
     } finally {
@@ -70,7 +74,7 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
         <div className="ai-avatar">✦</div>
         <div>
           <h2>Graph Copilot</h2>
-          <p>{selectedNodeIds?.length ? `${selectedNodeIds.length} node context · ${tab}` : `graph context · ${tab}`}</p>
+          <p>{selectedNodeIds?.length ? `${selectedNodeIds.length} ${tr('узлов в контексте', 'nodes in context')} · ${tab}` : `${tr('контекст графа', 'graph context')} · ${tab}`}</p>
         </div>
         <span className="ai-live"><i /> live</span>
       </div>
@@ -85,7 +89,7 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
                 <div className="message-meta">
                   <span>{m.offline ? 'LOCAL' : 'AI'}</span>
                   <span>{m.model}</span>
-                  {typeof m.confidence === 'number' && <span>{Math.round(m.confidence * 100)}% confidence</span>}
+                  {typeof m.confidence === 'number' && <span>{Math.round(m.confidence * 100)}% {tr('уверенность', 'confidence')}</span>}
                 </div>
               )}
             </div>
@@ -101,7 +105,7 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
       </div>
 
       <div className="chat-suggestions premium-suggestions">
-        {SUGGESTIONS.map(s => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}
+        {suggestions.map(s => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}
       </div>
 
       <form className="chat-form premium-chat-form" onSubmit={e => { e.preventDefault(); send() }}>
@@ -114,11 +118,11 @@ export default function ChatSidePanel({ selectedNodeIds, tab, headers }: any) {
               send()
             }
           }}
-          placeholder="Спросите по графу, роли, процессу или RAG…"
+          placeholder={tr('Спросите по графу, роли, процессу или RAG…', 'Ask about the graph, role, process or RAG…')}
           disabled={loading}
           rows={2}
         />
-        <button type="submit" disabled={loading || !input.trim()} aria-label="Отправить">↗</button>
+        <button type="submit" disabled={loading || !input.trim()} aria-label={tr('Отправить', 'Send')}>↗</button>
       </form>
       <div className="chat-privacy">Local fallback · graph-aware context · source-grounded answers</div>
     </aside>

@@ -1,3 +1,5 @@
+import { usePreferences } from '../preferences'
+
 export default function NodeInspector({
   node,
   edges,
@@ -11,20 +13,21 @@ export default function NodeInspector({
   onClose: () => void
   onFocusRelated: (ids: string[]) => void
 }) {
+  const { tr } = usePreferences()
   if (!node) return null
   const related = edges
     .filter(e => e.source === node.id || e.target === node.id)
     .map(e => {
       const otherId = e.source === node.id ? e.target : e.source
       const other = nodes.find(n => n.id === otherId)
-      return { id: otherId, label: other?.label || otherId, edge: e.label || 'связь', dir: e.source === node.id ? 'out' : 'in' }
+      return { id: otherId, label: other?.label || otherId, edge: e.label || tr('связь', 'relation'), dir: e.source === node.id ? 'out' : 'in' }
     })
 
   return (
     <div className="panel inspector">
       <div className="inspector-head">
-        <h3>Инспектор узла</h3>
-        <button type="button" className="chip" onClick={onClose}>Закрыть</button>
+        <div><p className="eyebrow">{tr('Контекст графа', 'Graph context')}</p><h3>{tr('Инспектор узла', 'Node inspector')}</h3></div>
+        <button type="button" className="chip" onClick={onClose}>{tr('Закрыть', 'Close')}</button>
       </div>
       <div className="insp-meta">
         <span className="badge">{node.nodeKind || 'node'}</span>
@@ -34,7 +37,7 @@ export default function NodeInspector({
       <h2 className="insp-title">{node.label}</h2>
       <p className="insp-desc">{node.description || node.kind}</p>
       <div className="insp-section">
-        <strong>Связи ({related.length})</strong>
+        <strong>{tr('Связи', 'Relations')} ({related.length})</strong>
         <ul className="insp-list">
           {related.map(r => (
             <li key={r.id + r.dir}>
@@ -44,7 +47,7 @@ export default function NodeInspector({
               <span className="muted"> · {r.edge}</span>
             </li>
           ))}
-          {!related.length && <li className="muted">Нет связей на этой вкладке</li>}
+          {!related.length && <li className="muted">{tr('Нет связей на этой вкладке', 'No relations in this view')}</li>}
         </ul>
       </div>
       <button
@@ -52,7 +55,7 @@ export default function NodeInspector({
         className="chip on"
         onClick={() => onFocusRelated([node.id, ...related.map(r => r.id)])}
       >
-        Подсветить все связи
+        {tr('Подсветить все связи', 'Highlight all relations')}
       </button>
     </div>
   )

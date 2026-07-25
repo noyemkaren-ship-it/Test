@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePreferences } from '../preferences'
 
 function bfs(edges: any[], from: string, to: string): string[] | null {
   if (from === to) return [from]
@@ -40,6 +41,7 @@ export default function PathFinder({
   edges: any[]
   onPath: (ids: string[]) => void
 }) {
+  const { tr } = usePreferences()
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [msg, setMsg] = useState('')
@@ -48,28 +50,28 @@ export default function PathFinder({
     if (!from || !to) return
     const path = bfs(edges, from, to)
     if (!path) {
-      setMsg('Путь не найден на этой вкладке')
+      setMsg(tr('Путь не найден на этой вкладке', 'No path in this view'))
       onPath([])
       return
     }
-    setMsg(`Путь: ${path.length - 1} шаг(ов)`)
+    setMsg(tr(`Путь: ${path.length - 1} шаг(ов)`, `Path: ${path.length - 1} step(s)`))
     onPath(path)
   }
 
   return (
     <div className="panel">
-      <h3>Путь между узлами</h3>
-      <p className="sub-hint">Кратчайший путь по связям текущего графа</p>
+      <h3>{tr('Путь между узлами', 'Path between nodes')}</h3>
+      <p className="sub-hint">{tr('Кратчайший путь по связям текущего графа', 'The shortest path through the current graph')}</p>
       <div className="path-row">
         <select className="field" value={from} onChange={e => setFrom(e.target.value)}>
-          <option value="">Откуда</option>
+          <option value="">{tr('Откуда', 'From')}</option>
           {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
         </select>
         <select className="field" value={to} onChange={e => setTo(e.target.value)}>
-          <option value="">Куда</option>
+          <option value="">{tr('Куда', 'To')}</option>
           {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
         </select>
-        <button type="button" className="chip on" onClick={find}>Найти</button>
+        <button type="button" className="chip on" onClick={find}>{tr('Найти', 'Find')}</button>
       </div>
       {msg && <p className="sub-hint">{msg}</p>}
     </div>

@@ -1,8 +1,11 @@
+import { usePreferences } from '../preferences'
+
 export default function PlatformPanel({ actors, workItems, engines, layers, onTransition }: any) {
+  const { tr } = usePreferences()
   return (
     <>
       <div className="panel">
-        <h3>Движки</h3>
+        <h3>{tr('Движки', 'Engines')}</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {(engines || []).map((e: any) => (
             <span key={e.id} className={`badge ${e.status === 'active' ? 'ok' : 'warn'}`}>
@@ -12,7 +15,7 @@ export default function PlatformPanel({ actors, workItems, engines, layers, onTr
         </div>
       </div>
       <div className="panel">
-        <h3>Слои Transformation Graph</h3>
+        <h3>{tr('Слои Transformation Graph', 'Transformation Graph layers')}</h3>
         <div className="grid-2">
           {(layers || []).map((l: any) => (
             <div key={l.id} className="card">

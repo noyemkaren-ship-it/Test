@@ -11,6 +11,7 @@ import {
   Position
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { expandFocus, getPersonaFocus } from '../graphFocus'
 
 const LAYOUT: Record<string, Record<string, { x: number; y: number }>> = {
   asis: {
@@ -54,18 +55,11 @@ const LAYOUT: Record<string, Record<string, { x: number; y: number }>> = {
   }
 }
 
-const ROLE_VIEWS: Record<string, string[]> = {
-  mgmt: ['core', 'reg', 'ods', 'rep', 'ctrl', 'dom', 'proc', 'ai'],
-  econ: ['econ', 'cb', 'rep', 'ctrl', 'ods', 'ai', 'core'],
-  aian: ['aian', 'ai', 'stand', 'valid', 'core', 'migr', 'self-copilot'],
-  dev: ['proc', 'rep', 'ods', 'ctrl', 'stand', 'core', 'self-graph']
-}
-
 function NodeView({ data }: any) {
   const hl = data.highlight || ''
   const kind = data.nodeKind || 'default'
   return (
-    <div className={`gp-node gp-${kind} ${hl === 'hl' ? 'is-hl' : ''} ${hl === 'dim' ? 'is-dim' : ''}`}>
+    <div className={`gp-node gp-${kind} ${hl === 'hl' ? 'is-hl' : ''} ${hl === 'root' ? 'is-root' : ''} ${hl === 'dim' ? 'is-dim' : ''}`}>
       <Handle type="target" position={Position.Left} className="gp-handle" id="t" />
       {data.badge && <span className={`gp-badge gp-badge-${data.badge}`}>{data.badge}</span>}
       <div className="gp-kind">{data.kind}{data.layer ? ` · ${data.layer}` : ''}</div>
@@ -87,7 +81,7 @@ const nodeTypes = {
   default: NodeView
 }
 
-function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeTab, onPin }: any) {
+function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeTab, relationDepth = 1, motion = true, onPin }: any) {
   const { fitView } = useReactFlow()
   const tab = activeTab || 'tobe'
 
@@ -101,26 +95,22 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
   }, [fitView])
 
   const nodeIds = useMemo(() => new Set(nodes.map((n: any) => n.id)), [nodes])
+  const validEdges = useMemo(
+    () => edges.filter((edge: any) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
+    [edges, nodeIds]
+  )
+  const focus = useMemo(() => {
+    if (pinned) return expandFocus([pinned], validEdges, relationDepth)
+    if (highlightIds?.length) return new Set<string>(highlightIds)
+    return getPersonaFocus(nodes, validEdges, roleView, relationDepth)
+  }, [nodes, validEdges, pinned, highlightIds, roleView, relationDepth])
 
   const rfNodes = useMemo(() => {
     const layout = LAYOUT[tab] || {}
-    const focus = new Set<string>()
-    if (pinned) focus.add(pinned)
-    ;(highlightIds || []).forEach((id: string) => focus.add(id))
-    if (pinned) {
-      edges.forEach((e: any) => {
-        if (e.source === pinned && nodeIds.has(e.target)) focus.add(e.target)
-        if (e.target === pinned && nodeIds.has(e.source)) focus.add(e.source)
-      })
-    }
 
     return nodes.map((n: any, i: number) => {
       let highlight = ''
-      if (focus.size > 0) highlight = focus.has(n.id) ? 'hl' : 'dim'
-      else if (roleView && tab === 'tobe') {
-        const allowed = ROLE_VIEWS[roleView] || []
-        highlight = allowed.includes(n.id) ? 'hl' : 'dim'
-      }
+      if (focus.size > 0) highlight = focus.has(n.id) ? (n.id === pinned ? 'root' : 'hl') : 'dim'
       const pos = layout[n.id] || { x: 40 + (i % 4) * 230, y: 40 + Math.floor(i / 4) * 130 }
       return {
         id: n.id,
@@ -139,54 +129,37 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
         draggable: true
       }
     })
-  }, [nodes, edges, pinned, highlightIds, roleView, tab, nodeIds])
+  }, [nodes, pinned, tab, focus])
 
   const rfEdges = useMemo(() => {
-    const valid = edges.filter((e: any) => nodeIds.has(e.source) && nodeIds.has(e.target))
-    const focus = new Set<string>()
-    if (pinned) {
-      focus.add(pinned)
-      valid.forEach((e: any) => {
-        if (e.source === pinned) focus.add(e.target)
-        if (e.target === pinned) focus.add(e.source)
-      })
-    }
-    ;(highlightIds || []).forEach((id: string) => focus.add(id))
-
-    return valid.map((e: any) => {
-      let active = false
-      if (focus.size > 0) {
-        active = e.source === pinned || e.target === pinned || (focus.has(e.source) && focus.has(e.target))
-      } else if (roleView && tab === 'tobe') {
-        const allowed = ROLE_VIEWS[roleView] || []
-        active = allowed.includes(e.source) && allowed.includes(e.target)
-      }
+    return validEdges.map((e: any) => {
+      const active = focus.size > 0 && focus.has(e.source) && focus.has(e.target)
       const dimmed = focus.size > 0 && !active
       return {
         id: `${tab}-${e.id || e.source + '-' + e.target}`,
         source: e.source,
         target: e.target,
         label: dimmed ? undefined : e.label || undefined,
-        animated: !!active,
+        animated: !!active && motion,
         type: 'smoothstep' as const,
         style: {
-          stroke: active ? '#5b9bd8' : '#5a6a7e',
-          strokeWidth: active ? 2.8 : 1.8,
+          stroke: active ? 'var(--graph-edge-active)' : 'var(--graph-edge)',
+          strokeWidth: active ? 3 : 1.6,
           opacity: dimmed ? 0.12 : 0.95
         },
-        labelStyle: { fill: '#c5d0dc', fontSize: 11, fontWeight: 500 },
-        labelBgStyle: { fill: '#1a2129', fillOpacity: 0.92 },
+        labelStyle: { fill: 'var(--graph-label)', fontSize: 11, fontWeight: 600 },
+        labelBgStyle: { fill: 'var(--graph-label-bg)', fillOpacity: 0.94 },
         labelBgPadding: [5, 3] as [number, number],
         labelBgBorderRadius: 4,
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: active ? '#5b9bd8' : '#5a6a7e',
+          color: active ? 'var(--graph-edge-active)' : 'var(--graph-edge)',
           width: 18,
           height: 18
         }
       }
     })
-  }, [edges, pinned, highlightIds, roleView, tab, nodeIds])
+  }, [validEdges, focus, tab, motion])
 
   const onNodeClick = useCallback(
     (_: any, node: any) => onPin(pinned === node.id ? null : node.id),
@@ -212,12 +185,12 @@ function GraphInner({ nodes, edges, pinned, highlightIds = [], roleView, activeT
       zoomOnScroll
       deleteKeyCode={null}
     >
-      <Background gap={18} size={1} color="#2a323d" />
+      <Background gap={18} size={1} color="var(--graph-grid)" />
       <Controls showInteractive={false} position="bottom-left" />
       <MiniMap
-        nodeColor={(n) => (n.data?.highlight === 'hl' ? '#5b9bd8' : '#3a4555')}
-        maskColor="rgba(0,0,0,0.45)"
-        style={{ background: '#1a2129', border: '1px solid #2a323d', borderRadius: 8 }}
+        nodeColor={(n) => (n.data?.highlight === 'hl' || n.data?.highlight === 'root' ? 'var(--graph-edge-active)' : 'var(--graph-minimap-node)')}
+        maskColor="var(--graph-minimap-mask)"
+        style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10 }}
       />
     </ReactFlow>
   )

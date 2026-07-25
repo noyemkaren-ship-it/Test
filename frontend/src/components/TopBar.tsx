@@ -1,3 +1,5 @@
+import { usePreferences } from '../preferences'
+
 export default function TopBar({
   user,
   token,
@@ -6,6 +8,7 @@ export default function TopBar({
   onLogout,
   onAdmin,
   onReviews,
+  onSettings,
   onHome
 }: {
   user: any
@@ -15,8 +18,11 @@ export default function TopBar({
   onLogout: () => void
   onAdmin: () => void
   onReviews: () => void
+  onSettings: () => void
   onHome: () => void
 }) {
+  const { tr } = usePreferences()
+
   return (
     <header className="topbar product-topbar">
       <button type="button" className="brand-lockup" onClick={onHome} aria-label="Graph Platform home">
@@ -27,9 +33,10 @@ export default function TopBar({
         </span>
       </button>
 
-      <nav className="topbar-nav" aria-label="Основная навигация">
-        <button type="button" className="nav-link" onClick={onHome}>Платформа</button>
-        <button type="button" className="nav-link" onClick={onReviews}>Отзывы</button>
+      <nav className="topbar-nav" aria-label={tr('Основная навигация', 'Main navigation')}>
+        <button type="button" className="nav-link" onClick={onHome}>{tr('Платформа', 'Platform')}</button>
+        <button type="button" className="nav-link" onClick={onReviews}>{tr('Отзывы', 'Reviews')}</button>
+        <button type="button" className="nav-link settings-nav-link" onClick={onSettings}><span aria-hidden>⚙</span> {tr('Настройки', 'Settings')}</button>
         {user?.role === 'admin' && <button type="button" className="nav-link admin-link" onClick={onAdmin}>Console</button>}
       </nav>
 
@@ -46,10 +53,10 @@ export default function TopBar({
                 <div className="profile-role">{user.role || 'member'}</div>
               </div>
             </div>
-            <button type="button" className="btn-quiet" onClick={onLogout}>Выйти</button>
+            <button type="button" className="btn-quiet" onClick={onLogout}>{tr('Выйти', 'Sign out')}</button>
           </div>
         ) : (
-          <button type="button" className="btn-primary compact" onClick={onLogin}>Войти</button>
+          <button type="button" className="btn-primary compact" onClick={onLogin}>{tr('Войти', 'Sign in')}</button>
         )}
       </div>
     </header>

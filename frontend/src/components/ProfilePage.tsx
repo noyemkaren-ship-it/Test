@@ -1,3 +1,5 @@
+import { usePreferences } from '../preferences'
+
 export default function ProfilePage({
   user,
   onLogout,
@@ -7,11 +9,12 @@ export default function ProfilePage({
   onLogout: () => void
   onBack: () => void
 }) {
+  const { tr } = usePreferences()
   if (!user) {
     return (
       <div className="profile-page">
-        <p className="muted">Вы не вошли</p>
-        <button type="button" className="chip on" onClick={onBack}>Назад</button>
+        <p className="muted">{tr('Вы не вошли', 'You are not signed in')}</p>
+        <button type="button" className="chip on" onClick={onBack}>{tr('Назад', 'Back')}</button>
       </div>
     )
   }
@@ -21,14 +24,14 @@ export default function ProfilePage({
         <div className="profile-big-avatar">
           {(user.name || user.email || '?')[0].toUpperCase()}
         </div>
-        <h1>{user.name || 'Пользователь'}</h1>
+        <h1>{user.name || tr('Пользователь', 'User')}</h1>
         <p className="profile-email">{user.email}</p>
         <span className={`role-pill ${user.role === 'admin' ? 'admin' : ''}`}>
-          {user.role === 'admin' ? '🛡 Администратор' : 'Участник'}
+          {user.role === 'admin' ? tr('🛡 Администратор', '🛡 Administrator') : tr('Участник', 'Member')}
         </span>
       </div>
       <div className="panel">
-        <h3>Аккаунт</h3>
+        <h3>{tr('Аккаунт', 'Account')}</h3>
         <div className="activity-item">
           <div className="activity-q">ID</div>
           <div className="activity-meta">{user.id}</div>
@@ -38,11 +41,11 @@ export default function ProfilePage({
           <div className="activity-meta">{user.workspaceId || '—'}</div>
         </div>
         <button type="button" className="auth-submit" style={{ marginTop: 16 }} onClick={onLogout}>
-          Выйти из аккаунта
+          {tr('Выйти из аккаунта', 'Sign out')}
         </button>
       </div>
       <button type="button" className="chip" style={{ marginTop: 12 }} onClick={onBack}>
-        ← К графу
+        ← {tr('К графу', 'Back to graph')}
       </button>
     </div>
   )

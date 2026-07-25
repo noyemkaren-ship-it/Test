@@ -14,20 +14,11 @@ import ReviewsPage from './components/ReviewsPage'
 import TopBar from './components/TopBar'
 import BottomNav from './components/BottomNav'
 import ProfilePage from './components/ProfilePage'
+import SettingsPage from './components/SettingsPage'
+import { usePreferences } from './preferences'
+import { getPersonaFocus } from './graphFocus'
 
-const TABS = [
-  { id: 'asis', label: 'As is', hint: 'Текущее состояние' },
-  { id: 'process', label: 'Process', hint: 'Трансформация' },
-  { id: 'tobe', label: 'To be', hint: 'Целевая модель' }
-]
-
-const NOTES: Record<string, string> = {
-  asis: 'Фиксирует реальность: системы, роли, знания и разрывы до трансформации.',
-  process: 'Показывает путь изменений: пилоты, перенос знаний и переходные этапы.',
-  tobe: 'Целевая knowledge operating model: знания, реализация, проекты и ресурсы связаны одним графом.'
-}
-
-type Page = 'app' | 'admin' | 'login' | 'reviews' | 'profile'
+type Page = 'app' | 'admin' | 'login' | 'reviews' | 'profile' | 'settings'
 
 function pageFromHash(): Page {
   const h = window.location.hash
@@ -35,6 +26,7 @@ function pageFromHash(): Page {
   if (h === '#/login') return 'login'
   if (h === '#/reviews') return 'reviews'
   if (h === '#/profile') return 'profile'
+  if (h === '#/settings') return 'settings'
   return 'app'
 }
 
@@ -45,6 +37,7 @@ function humanDomainName(graph: any) {
 }
 
 export default function App() {
+  const { language, tr, relationDepth, motion } = usePreferences()
   const [tab, setTab] = useState('tobe')
   const [nodes, setNodes] = useState<any[]>([])
   const [edges, setEdges] = useState<any[]>([])
@@ -74,6 +67,23 @@ export default function App() {
     localStorage.setItem('gp_session', created)
     return created
   })
+  const tabs = useMemo(() => [
+    { id: 'asis', label: 'As is', hint: tr('Текущее состояние', 'Current state') },
+    { id: 'process', label: 'Process', hint: tr('Трансформация', 'Transformation') },
+    { id: 'tobe', label: 'To be', hint: tr('Целевая модель', 'Target model') }
+  ], [language]) // eslint-disable-line react-hooks/exhaustive-deps
+  const notes: Record<string, string> = {
+    asis: tr('Фиксирует реальность: системы, роли, знания и разрывы до трансформации.', 'Maps today’s systems, roles, knowledge and transformation gaps.'),
+    process: tr('Показывает путь изменений: пилоты, перенос знаний и переходные этапы.', 'Shows pilots, knowledge transfer and every transition stage.'),
+    tobe: tr('Целевая operating model: знания, реализация, проекты и ресурсы связаны одним графом.', 'The target operating model connects knowledge, delivery, projects and resources in one graph.')
+  }
+  const personas = useMemo(() => [
+    { id: 'all', icon: '◎', label: tr('Общий вид', 'Overview'), hint: tr('Вся система', 'Entire system') },
+    { id: 'mgmt', icon: '◇', label: tr('Руководитель', 'Executive'), hint: tr('Риски и решения', 'Risks & decisions') },
+    { id: 'analyst', icon: '◫', label: tr('Аналитик', 'Analyst'), hint: tr('Данные и отчёты', 'Data & reports') },
+    { id: 'dev', icon: '⌘', label: tr('Разработчик', 'Developer'), hint: tr('Системы и API', 'Systems & APIs') },
+    { id: 'aian', icon: '✦', label: tr('Инженер ИИ', 'AI Engineer'), hint: tr('RAG, модели, eval', 'RAG, models, eval') }
+  ], [language]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeGraph = useMemo(() => graphs.find(g => g.id === activeGraphId) || null, [graphs, activeGraphId])
   const layerOptions = useMemo(() => Array.from(new Set(nodes.map(n => n.layer).filter(Boolean))), [nodes])
@@ -95,11 +105,11 @@ export default function App() {
 
   function go(target: Page) {
     if (target === 'admin' && user?.role !== 'admin') {
-      showToast('Для Console нужен admin-доступ')
+      showToast(tr('Для Console нужен admin-доступ', 'Admin access is required for Console'))
       target = 'login'
     }
     if (target === 'profile' && !token) target = 'login'
-    const map: Record<Page, string> = { app: '#/', admin: '#/admin', login: '#/login', reviews: '#/reviews', profile: '#/profile' }
+    const map: Record<Page, string> = { app: '#/', admin: '#/admin', login: '#/login', reviews: '#/reviews', profile: '#/profile', settings: '#/settings' }
     window.location.hash = map[target]
     setPage(target)
   }
@@ -191,6 +201,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    document.title = tr('Graph Platform — живая система знаний', 'Graph Platform — living knowledge system')
+  }, [language]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { localStorage.setItem('gp_token', token) }, [token])
   useEffect(() => { localStorage.setItem('gp_graph', activeGraphId) }, [activeGraphId])
   useEffect(() => { localStorage.setItem('gp_ws', workspaceId) }, [workspaceId])
@@ -205,7 +219,7 @@ export default function App() {
     setUser(null)
     setActiveGraphId('')
     setWorkspaceId('ws-default')
-    showToast('Сессия завершена')
+    showToast(tr('Сессия завершена', 'Session closed'))
     go('app')
   }
 
@@ -222,9 +236,12 @@ export default function App() {
   }, [edges, visibleNodes])
 
   const selectedNode = nodes.find(n => n.id === pinned) || null
-  const roles = tab === 'tobe'
-    ? [{ id: 'mgmt', label: 'Руководство' }, { id: 'econ', label: 'Экономист' }, { id: 'aian', label: 'Инженер ИИ' }, { id: 'dev', label: 'Разработчик' }]
-    : []
+  const personaCounts = useMemo(() => Object.fromEntries(personas.map(persona => [
+    persona.id,
+    persona.id === 'all'
+      ? visibleNodes.length
+      : getPersonaFocus(visibleNodes, visibleEdges, persona.id, relationDepth).size
+  ])), [personas, visibleNodes, visibleEdges, relationDepth])
 
   const renderPage = (content: React.ReactNode, currentPage: Page) => (
     <div className="app-shell has-bottom-nav">
@@ -240,7 +257,7 @@ export default function App() {
         setToken(tk)
         setUser(u || null)
         if (u?.workspaceId) setWorkspaceId(u.workspaceId)
-        showToast('Workspace открыт')
+        showToast(tr('Workspace открыт', 'Workspace opened'))
         go('app')
       }}
     />,
@@ -249,7 +266,7 @@ export default function App() {
 
   if (page === 'reviews') return renderPage(
     <>
-      <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onHome={() => go('app')} />
+      <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onSettings={() => go('settings')} onHome={() => go('app')} />
       <ReviewsPage headers={headers} onBack={() => go('app')} />
     </>,
     'reviews'
@@ -259,58 +276,68 @@ export default function App() {
 
   if (page === 'profile') return renderPage(
     <>
-      <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onHome={() => go('app')} />
+      <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onSettings={() => go('settings')} onHome={() => go('app')} />
       <ProfilePage user={user} onLogout={logout} onBack={() => go('app')} />
     </>,
     'profile'
   )
 
+  if (page === 'settings') return renderPage(
+    <>
+      <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onSettings={() => go('settings')} onHome={() => go('app')} />
+      <SettingsPage onBack={() => go('app')} />
+    </>,
+    'settings'
+  )
+
   return (
     <div className={`app-shell has-bottom-nav product-shell ${present ? 'present' : ''}`}>
-      {!present && <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onHome={() => go('app')} />}
+      {!present && <TopBar user={user} token={token} health={health} onLogin={() => go('login')} onLogout={logout} onAdmin={() => go('admin')} onReviews={() => go('reviews')} onSettings={() => go('settings')} onHome={() => go('app')} />}
 
       <main className="app-main product-main">
-        {!present && (
-          <section className="product-hero">
-            <div className="hero-copy">
-              <div className="hero-kicker"><span className="pulse-dot" /> Knowledge Operating System</div>
-              <h1>Знания, процессы и AI — <span>в одном живом графе.</span></h1>
-              <p>
-                Graph Platform превращает разрозненные регламенты, данные, роли и проекты в управляемую модель,
-                где человек и Copilot работают с одной системой контекста.
-              </p>
-              <div className="hero-actions">
-                <button type="button" className="btn-primary" onClick={() => document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth' })}>Открыть граф</button>
-                <button type="button" className="btn-secondary" onClick={() => document.getElementById('copilot')?.scrollIntoView({ behavior: 'smooth' })}>Спросить Copilot</button>
-              </div>
-              <div className="trust-row">
-                <span>◉ Public domains без login</span>
-                <span>◆ Hybrid offline AI</span>
-                <span>◇ Tenant-safe writes</span>
-              </div>
-            </div>
+	        {!present && (
+	          <section className="product-hero">
+	            <div className="hero-copy">
+	              <div className="hero-kicker"><span className="pulse-dot" /> Knowledge Intelligence Platform</div>
+	              <h1>{tr('Смотрите на систему', 'See the system')} <span>{tr('с любой точки зрения.', 'from every point of view.')}</span></h1>
+	              <p>
+	                {tr(
+	                  'Graph Platform связывает знания, процессы, команды и AI в живую карту — с персональными проекциями для руководителя, аналитика, разработчика и инженера ИИ.',
+	                  'Graph Platform connects knowledge, processes, teams and AI in one living map — with dedicated perspectives for executives, analysts, developers and AI engineers.'
+	                )}
+	              </p>
+	              <div className="hero-actions">
+	                <button type="button" className="btn-primary" onClick={() => document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth' })}>{tr('Исследовать граф', 'Explore the graph')} <span aria-hidden>↘</span></button>
+	                <button type="button" className="btn-secondary" onClick={() => go('settings')}>{tr('Настроить вид', 'Personalize view')} <span aria-hidden>⚙</span></button>
+	              </div>
+	              <div className="trust-row">
+	                <span>◉ {tr('Публичные домены без входа', 'Public domains, no sign-in')}</span>
+	                <span>◆ {tr('Гибридный offline AI', 'Hybrid offline AI')}</span>
+	                <span>◇ {tr('Безопасные workspace', 'Tenant-safe workspaces')}</span>
+	              </div>
+	            </div>
 
-            <div className="hero-console" aria-label="Состояние платформы">
-              <div className="console-top"><span>LIVE PLATFORM</span><span className={health?.ok ? 'online-text' : 'muted'}>{health?.ok ? '● ONLINE' : '○ CHECKING'}</span></div>
-              <div className="console-metric"><strong>{publicGraphs.length}</strong><span>published domains</span></div>
-              <div className="console-grid">
-                <div><b>{nodes.length}</b><small>nodes in view</small></div>
-                <div><b>{edges.length}</b><small>relations</small></div>
-                <div><b>{health?.llmMode === 'offline-first' ? 'LOCAL' : 'HYBRID'}</b><small>AI mode</small></div>
-                <div><b>{health?.version || '3.0'}</b><small>platform</small></div>
-              </div>
-              <div className="console-line"><span>Graph engine</span><i /><em>ready</em></div>
-              <div className="console-line"><span>RAG + context</span><i /><em>ready</em></div>
-              <div className="console-line"><span>Offline intelligence</span><i /><em>ready</em></div>
-            </div>
-          </section>
-        )}
+	            <div className="hero-visual">
+	              <img src="/images/graph-collaboration.webp" alt={tr('Команда исследует пространственный граф знаний', 'A team explores a spatial knowledge graph')} decoding="async" fetchPriority="high" />
+	              <div className="hero-visual-shade" />
+	              <div className="hero-console" aria-label={tr('Состояние платформы', 'Platform status')}>
+	                <div className="console-top"><span>LIVE CONTEXT</span><span className={health?.ok ? 'online-text' : 'muted'}>{health?.ok ? '● ONLINE' : '○ CHECKING'}</span></div>
+	                <div className="console-kpis">
+	                  <div><b>{nodes.length}</b><small>{tr('узлов', 'nodes')}</small></div>
+	                  <div><b>{edges.length}</b><small>{tr('связей', 'relations')}</small></div>
+	                  <div><b>{publicGraphs.length}</b><small>{tr('доменов', 'domains')}</small></div>
+	                </div>
+	                <div className="console-line"><span>Graph + RAG</span><i /><em>{tr('готово', 'ready')}</em></div>
+	              </div>
+	            </div>
+	          </section>
+	        )}
 
         {!present && (
-          <section className="domain-section" aria-labelledby="domains-title">
-            <div className="section-heading">
-              <div><p className="eyebrow">Public knowledge catalog</p><h2 id="domains-title">Домены</h2></div>
-              <button type="button" className={`btn-quiet ${!activeGraphId ? 'active' : ''}`} onClick={() => setActiveGraphId('')}>Все домены</button>
+	          <section className="domain-section" aria-labelledby="domains-title">
+	            <div className="section-heading">
+	              <div><p className="eyebrow">Public knowledge catalog</p><h2 id="domains-title">{tr('Домены знаний', 'Knowledge domains')}</h2></div>
+	              <button type="button" className={`btn-quiet ${!activeGraphId ? 'active' : ''}`} onClick={() => setActiveGraphId('')}>{tr('Все домены', 'All domains')}</button>
             </div>
             <div className="domain-grid">
               {graphs.map((graph, index) => (
@@ -318,43 +345,65 @@ export default function App() {
                   <span className="domain-number">0{index + 1}</span>
                   <span className="domain-icon">{graph.slug === 'bank' ? '₿' : graph.slug === 'law' ? '§' : '◇'}</span>
                   <strong>{humanDomainName(graph)}</strong>
-                  <small>{graph.description || 'Knowledge domain'}</small>
-                  <span className="domain-meta"><b>{graph.nodeCount ?? '—'}</b> nodes · <b>{graph.edgeCount ?? '—'}</b> links · {graph.visibility || 'public'}</span>
-                </button>
-              ))}
-              {!graphs.length && <div className="domain-empty">API доступен, но опубликованных доменов пока нет.</div>}
-            </div>
-          </section>
-        )}
+	                  <small>{graph.description || tr('Домен знаний', 'Knowledge domain')}</small>
+	                  <span className="domain-meta"><b>{graph.nodeCount ?? '—'}</b> {tr('узлов', 'nodes')} · <b>{graph.edgeCount ?? '—'}</b> {tr('связей', 'links')} · {graph.visibility || 'public'}</span>
+	                </button>
+	              ))}
+	              {!graphs.length && <div className="domain-empty">{tr('API доступен, но опубликованных доменов пока нет.', 'The API is available, but there are no published domains yet.')}</div>}
+	            </div>
+	          </section>
+	        )}
 
-        <section id="workspace" className={`graph-workspace ${present ? 'presentation-mode' : ''}`}>
+	        {!present && (
+	          <section className="perspective-story">
+	            <div className="story-photo">
+	              <img src="/images/graph-connections.webp" alt={tr('Рука выбирает связь в графе знаний', 'A hand selects a relation in a knowledge graph')} loading="lazy" decoding="async" />
+	              <span className="story-photo-label"><i /> {tr('Живой контекст', 'Living context')}</span>
+	            </div>
+	            <div className="story-copy">
+	              <p className="eyebrow">{tr('Ролевые проекции', 'Role perspectives')}</p>
+	              <h2>{tr('Один граф. Разные вопросы. Никакого информационного шума.', 'One graph. Different questions. Zero information noise.')}</h2>
+	              <p>{tr(
+	                'Выберите рабочую роль — платформа выделит значимые узлы, активирует относящиеся к ним связи и приглушит всё второстепенное. Клик по любому узлу раскрывает его контекст до двух уровней.',
+	                'Choose a working role and the platform highlights meaningful nodes, activates their relations and quiets everything else. Click any node to reveal up to two levels of context.'
+	              )}</p>
+	              <div className="story-stats">
+	                <div><strong>4</strong><span>{tr('ролевые линзы', 'role lenses')}</span></div>
+	                <div><strong>{relationDepth}×</strong><span>{tr('глубина связей', 'relation depth')}</span></div>
+	                <div><strong>∞</strong><span>{tr('контекстов', 'contexts')}</span></div>
+	              </div>
+	            </div>
+	          </section>
+	        )}
+
+	        <section id="workspace" className={`graph-workspace ${present ? 'presentation-mode' : ''}`}>
           {!present && (
             <aside className="graph-sidebar">
-              <div className="side-head"><span className="side-icon">⌘</span><div><strong>Graph Control</strong><small>{activeGraph ? humanDomainName(activeGraph) : 'All public domains'}</small></div></div>
+	              <div className="side-head"><span className="side-icon">⌘</span><div><strong>Graph Control</strong><small>{activeGraph ? humanDomainName(activeGraph) : tr('Все публичные домены', 'All public domains')}</small></div></div>
 
-              <label className="control-label">Domain / graph
-                <select className="field control-field" value={activeGraphId} onChange={e => setActiveGraphId(e.target.value)}>
-                  <option value="">Все опубликованные</option>
+	              <label className="control-label">{tr('Домен / граф', 'Domain / graph')}
+	                <select className="field control-field" value={activeGraphId} onChange={e => setActiveGraphId(e.target.value)}>
+	                  <option value="">{tr('Все опубликованные', 'All published')}</option>
                   {graphs.map(g => <option key={g.id} value={g.id}>{g.name} · {g.visibility || 'public'}</option>)}
                 </select>
               </label>
 
-              <label className="control-label">Search
-                <input className="field control-field" value={search} onChange={e => setSearch(e.target.value)} placeholder="Узел, слой, описание…" />
+	              <label className="control-label">{tr('Поиск', 'Search')}
+	                <input className="field control-field" value={search} onChange={e => setSearch(e.target.value)} placeholder={tr('Узел, слой, описание…', 'Node, layer, description…')} />
               </label>
 
               <div className="control-group">
-                <span className="control-label plain">State</span>
-                <div className="segmented vertical-on-mobile">
-                  {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
-                </div>
-                <p className="control-help">{NOTES[tab]}</p>
-              </div>
+	                <span className="control-label plain">{tr('Состояние', 'State')}</span>
+	                <div className="segmented vertical-on-mobile">
+	                  {tabs.map(t => <button key={t.id} type="button" title={t.hint} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
+	                </div>
+	                <p className="control-help">{notes[tab]}</p>
+	              </div>
 
-              <div className="control-group">
-                <span className="control-label plain">Layer projection</span>
-                <div className="filter-stack">
-                  <button type="button" className={layer === 'all' ? 'on' : ''} onClick={() => setLayer('all')}><span>All layers</span><b>{nodes.length}</b></button>
+	              <div className="control-group">
+	                <span className="control-label plain">{tr('Проекция слоя', 'Layer projection')}</span>
+	                <div className="filter-stack">
+	                  <button type="button" className={layer === 'all' ? 'on' : ''} onClick={() => setLayer('all')}><span>{tr('Все слои', 'All layers')}</span><b>{nodes.length}</b></button>
                   {layerOptions.map(name => (
                     <button key={name} type="button" className={layer === name ? 'on' : ''} onClick={() => setLayer(String(name))}>
                       <span>{String(name)}</span><b>{nodes.filter(n => n.layer === name).length}</b>
@@ -363,47 +412,74 @@ export default function App() {
                 </div>
               </div>
 
-              {!!roles.length && (
-                <div className="control-group">
-                  <span className="control-label plain">Role projection</span>
-                  <select className="field control-field" value={roleView || ''} onChange={e => setRoleView(e.target.value || null)}>
-                    <option value="">Без проекции</option>
-                    {roles.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                  </select>
-                </div>
-              )}
+	              <div className="control-group context-control">
+	                <span className="control-label plain">{tr('Глубина контекста', 'Context depth')}</span>
+	                <button type="button" className="context-depth-button" onClick={() => go('settings')}>
+	                  <span><b>{relationDepth}×</b>{tr('уровня связей', 'relation levels')}</span><i>⚙</i>
+	                </button>
+	              </div>
 
-              <div className="side-status">
-                <div><span className="service-dot" /> <b>{visibleNodes.length}</b> visible nodes</div>
-                <div>Relations <b>{visibleEdges.length}</b></div>
-              </div>
+	              <div className="side-status">
+	                <div><span className="service-dot" /> <b>{visibleNodes.length}</b> {tr('видимых узлов', 'visible nodes')}</div>
+	                <div>{tr('Связи', 'Relations')} <b>{visibleEdges.length}</b></div>
+	              </div>
             </aside>
           )}
 
           <div className="graph-stage">
             <div className="stage-toolbar">
               <div>
-                <p className="eyebrow">Transformation graph</p>
-                <h2>{activeGraph?.name || 'Cross-domain knowledge map'}</h2>
+	                <p className="eyebrow">{tr('Интерактивная карта', 'Interactive map')}</p>
+	                <h2>{activeGraph?.name || tr('Междоменная карта знаний', 'Cross-domain knowledge map')}</h2>
               </div>
               <div className="stage-actions">
-                {graphLoading && <span className="loading-pill">Syncing…</span>}
-                <button type="button" className="btn-quiet" onClick={() => setPresent(!present)}>{present ? 'Выйти' : 'Презентация'}</button>
-              </div>
-            </div>
+	                {graphLoading && <span className="loading-pill">{tr('Синхронизация…', 'Syncing…')}</span>}
+	                <button type="button" className="btn-quiet" onClick={() => setPresent(!present)}>{present ? tr('Выйти', 'Exit') : tr('Презентация', 'Present')}</button>
+	              </div>
+	            </div>
 
-            <div className={`flow-wrap premium-flow ${present ? 'flow-present' : ''}`}>
-              {!visibleNodes.length ? (
-                <div className="flow-empty premium-empty"><span>◇</span><strong>Нет узлов в этой проекции</strong><small>Смените домен, состояние или слой.</small></div>
-              ) : (
+	            {!present && (
+	              <div className="perspective-dock" aria-label={tr('Выбор ролевой проекции', 'Role perspective selector')}>
+	                <div className="perspective-dock-label"><span>{tr('Смотреть как', 'View as')}</span><small>{tr('Связанные узлы подсветятся автоматически', 'Related nodes highlight automatically')}</small></div>
+	                <div className="perspective-buttons">
+	                  {personas.map(persona => {
+	                    const active = persona.id === 'all' ? !roleView : roleView === persona.id
+	                    return (
+	                      <button
+	                        key={persona.id}
+	                        type="button"
+	                        className={active ? 'active' : ''}
+	                        aria-pressed={active}
+	                        onClick={() => {
+	                          setRoleView(persona.id === 'all' ? null : persona.id)
+	                          setPinned(null)
+	                          setHighlightIds([])
+	                        }}
+	                      >
+	                        <span className="persona-icon" aria-hidden>{persona.icon}</span>
+	                        <span><strong>{persona.label}</strong><small>{persona.hint}</small></span>
+	                        <b>{personaCounts[persona.id] || 0}</b>
+	                      </button>
+	                    )
+	                  })}
+	                </div>
+	              </div>
+	            )}
+
+	            <div className={`flow-wrap premium-flow ${present ? 'flow-present' : ''}`}>
+	              {!visibleNodes.length ? (
+	                <div className="flow-empty premium-empty"><span>◇</span><strong>{tr('Нет узлов в этой проекции', 'No nodes in this perspective')}</strong><small>{tr('Смените домен, состояние или слой.', 'Change the domain, state or layer.')}</small></div>
+	              ) : (
                 <FlowCanvas
                   key={`graph-${tab}-${layer}-${graphKey}`}
                   nodes={visibleNodes}
                   edges={visibleEdges}
                   pinned={pinned}
                   highlightIds={highlightIds}
-                  roleView={layer === 'all' ? roleView : null}
-                  activeTab={tab}
+	                  roleView={roleView}
+	                  activeTab={tab}
+	                  relationDepth={relationDepth}
+	                  motion={motion}
                   onPin={(id: string | null) => { setPinned(id); setHighlightIds(id ? [id] : []) }}
                 />
               )}
@@ -415,7 +491,7 @@ export default function App() {
                 <span><i className="legend-dot implementation" /> Implementation</span>
                 <span><i className="legend-dot project" /> Project</span>
                 <span><i className="legend-dot resource" /> Resource</span>
-                <span className="stage-hint">Click node → focus context</span>
+	                <span className="stage-hint">{tr('Нажмите узел → увидеть связанные элементы', 'Click a node → reveal its context')}</span>
               </div>
             )}
           </div>
@@ -432,17 +508,20 @@ export default function App() {
         )}
 
         {!present && (
-          <>
-            <section className="utility-grid">
-              <div className="utility-column"><PathFinder nodes={nodes} edges={edges} onPath={(ids: string[]) => { setHighlightIds(ids); if (ids[0]) setPinned(ids[0]); showToast(ids.length ? 'Путь найден' : 'Путь не найден') }} /></div>
-              <div className="utility-column"><Glossary onSelect={(ids: string[]) => { setHighlightIds(ids); setPinned(ids[0] || null); showToast('Контекст подсвечен') }} activeIds={highlightIds} /></div>
-            </section>
+	          <>
+	            <section className="utility-grid">
+	              <div className="utility-column"><PathFinder nodes={nodes} edges={edges} onPath={(ids: string[]) => { setHighlightIds(ids); if (ids[0]) setPinned(ids[0]); showToast(ids.length ? tr('Путь найден', 'Path found') : tr('Путь не найден', 'Path not found')) }} /></div>
+	              <div className="utility-column"><Glossary onSelect={(ids: string[]) => { setHighlightIds(ids); setPinned(ids[0] || null); showToast(tr('Контекст подсвечен', 'Context highlighted')) }} activeIds={highlightIds} /></div>
+	            </section>
 
             <section id="copilot" className="copilot-product-section">
               <div className="copilot-copy">
                 <p className="eyebrow">Graph-native intelligence</p>
-                <h2>Copilot понимает не страницу. Он понимает контекст.</h2>
-                <p>Текущий домен, выбранные узлы, связи, Work Items и RAG передаются как единый контекст. При недоступности облачного LLM тот же контекст получает локальный hybrid AI.</p>
+	                <h2>{tr('Copilot понимает не страницу. Он понимает контекст.', 'Copilot understands more than the page. It understands context.')}</h2>
+	                <p>{tr(
+	                  'Текущий домен, выбранные узлы, связи, Work Items и RAG передаются как единый контекст. Если облачный LLM недоступен, тот же контекст получает локальный hybrid AI.',
+	                  'The current domain, selected nodes, relations, Work Items and RAG become one shared context. If the cloud LLM is unavailable, the same context is handled by local hybrid AI.'
+	                )}</p>
                 <div className="ai-capabilities">
                   <span>BM25 + fuzzy retrieval</span><span>Graph context</span><span>Conversation memory</span><span>Source-aware answers</span>
                 </div>
@@ -456,7 +535,7 @@ export default function App() {
               <ActivityFeed headers={headers} />
               <PlatformPanel actors={actors} workItems={workItems} engines={health?.engines || []} layers={layerOptions} onTransition={async (id: string, event: string) => {
                 const res = await fetch(apiUrl(`/api/fsm/${id}/transition`), { method: 'POST', headers: headers(), body: JSON.stringify({ event }) })
-                if (!res.ok) showToast('Для изменения FSM нужен доступ')
+	                if (!res.ok) showToast(tr('Для изменения FSM нужен доступ', 'Access is required to update the FSM'))
               }} />
             </section>
 
@@ -465,10 +544,10 @@ export default function App() {
                 <div className="section-heading"><div><p className="eyebrow">Authenticated workspace</p><h2>Library & reusable assets</h2></div><span className="service-pill online"><span className="service-dot" /> private</span></div>
                 <LibraryPanel headers={headers} workspaceId={workspaceId} projects={projects} />
               </section>
-            ) : (
-              <section className="login-cta">
-                <div><p className="eyebrow">Private layer</p><h2>Публичный граф — без регистрации. Управление — после входа.</h2><p>Авторизация открывает workspace, шаблоны, role bindings, историю и административные операции, не закрывая публичный каталог.</p></div>
-                <button type="button" className="btn-primary" onClick={() => go('login')}>Открыть workspace</button>
+	            ) : (
+	              <section className="login-cta">
+	                <div><p className="eyebrow">Private layer</p><h2>{tr('Публичный граф — без регистрации. Управление — после входа.', 'Explore public graphs freely. Sign in when you need control.')}</h2><p>{tr('Авторизация открывает workspace, шаблоны, роли, историю и административные операции, не закрывая публичный каталог.', 'Authentication unlocks workspaces, templates, roles, history and administration without hiding the public catalog.')}</p></div>
+	                <button type="button" className="btn-primary" onClick={() => go('login')}>{tr('Открыть workspace', 'Open workspace')}</button>
               </section>
             )}
 
