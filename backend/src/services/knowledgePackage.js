@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import { DEFAULT_PROFILE } from '../engines/ontology.js';
 import { jstr, slugify } from '../utils/helper.js';
+import { ensureWorkspaceProject } from './hierarchy.js';
+import { materializeOntologyTypes } from './ontologyTypes.js';
 
 export const IMPORT_LIMITS = Object.freeze({ maxNodes: 5000, maxEdges: 10000, maxDataBytes: 20_000 });
 
@@ -140,23 +142,26 @@ export function importPrivateKnowledgePackage(db, workspaceId, raw, { sourceFile
   while (db.prepare('SELECT 1 FROM graphs WHERE slug = ?').get(slug)) slug = `${baseSlug}-${suffix++}`;
   const nodeMap = new Map(pkg.nodes.map(node => [node.sourceId, randomUUID()]));
   const importedAt = new Date().toISOString();
+  let projectId;
 
   const transaction = db.transaction(() => {
+    projectId = ensureWorkspaceProject(db, workspaceId, pkg.name);
     db.prepare(`
-      INSERT INTO graphs (id, workspace_id, name, slug, description, visibility, settings_json)
-      VALUES (?, ?, ?, ?, ?, 'private', ?)
-    `).run(graphId, workspaceId, pkg.name, slug, pkg.description, jstr({ importedAt, sourceFileName: compactText(sourceFileName, '', 240), importMode: 'member-private' }));
+      INSERT INTO graphs (id, workspace_id, project_id, name, slug, description, visibility, settings_json)
+      VALUES (?, ?, ?, ?, ?, ?, 'private', ?)
+    `).run(graphId, workspaceId, projectId, pkg.name, slug, pkg.description, jstr({ importedAt, sourceFileName: compactText(sourceFileName, '', 240), importMode: 'member-private' }));
     db.prepare('INSERT OR REPLACE INTO ontology (workspace_id, graph_id, profile_json) VALUES (?, ?, ?)')
       .run(workspaceId, graphId, jstr(pkg.ontology));
+    materializeOntologyTypes(db, workspaceId, graphId, pkg.ontology);
 
     const insertNode = db.prepare(`
       INSERT INTO nodes
         (id, workspace_id, project_id, graph_id, tab, label, kind, layer, node_kind, description, badge, data_json)
-      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const node of pkg.nodes) {
       insertNode.run(
-        nodeMap.get(node.sourceId), workspaceId, graphId, node.tab, node.label, node.kind,
+        nodeMap.get(node.sourceId), workspaceId, projectId, graphId, node.tab, node.label, node.kind,
         node.layer, node.nodeKind, node.description, node.badge, jstr(node.data)
       );
     }
@@ -173,7 +178,7 @@ export function importPrivateKnowledgePackage(db, workspaceId, raw, { sourceFile
 
   return {
     ok: true,
-    graph: { id: graphId, workspaceId, name: pkg.name, slug, description: pkg.description, visibility: 'private', canEdit: true },
+    graph: { id: graphId, workspaceId, projectId, name: pkg.name, slug, description: pkg.description, visibility: 'private', canEdit: true },
     nodes: pkg.nodes.length,
     edges: pkg.edges.length,
     moderation: 'passed'

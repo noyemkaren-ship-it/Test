@@ -54,12 +54,13 @@ const ENDPOINT_LIMITS = {
   default: { windowMs: 60_000, max: 100 }
 };
 
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [ip, bucket] of hits.entries()) {
     if (now - bucket.start > 300_000) hits.delete(ip);
   }
 }, 300_000);
+cleanupTimer.unref?.();
 
 export function rateLimit(customOptions = {}) {
   return (req, res, next) => {

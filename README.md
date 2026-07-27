@@ -207,4 +207,4 @@ info.pdf        полный технический и продуктовый п
 
 ## Версия
 
-`3.0.0` — redesigned frontend/admin, public read-only domains, workspace isolation, graph-aware backend and Hybrid Offline AI.
+`3.1.0` — complete SQLite requirements model, Review/Execution engines, Issue/Change workflows, persistent Copilot conversations, self-hosting graph and operational UI.

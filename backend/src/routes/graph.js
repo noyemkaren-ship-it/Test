@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { authRequired } from '../middleware/auth.js';
 import { getDb, wsId, graphId, validateWorkspaceAccess, validateGraphAccess, jparse, jstr } from '../utils/helper.js';
+import { getAllowedTransitions } from '../engines/fsm.js';
+import { normalizePosition, relationEndpointsBelongToGraph } from '../engines/graph.js';
 
 const router = Router();
 
@@ -34,7 +36,7 @@ function readScope(req, alias = '') {
 function serializeNode(n) {
   return {
     id: n.id, tab: n.tab, label: n.label, kind: n.kind, layer: n.layer,
-    nodeKind: n.node_kind, description: n.description, badge: n.badge,
+    nodeKind: n.node_kind, nodeTypeId: n.node_type_id || null, description: n.description, badge: n.badge,
     workspaceId: n.workspace_id, projectId: n.project_id, graphId: n.graph_id,
     data: jparse(n.data_json, {})
   };
@@ -43,7 +45,7 @@ function serializeNode(n) {
 function serializeEdge(e) {
   return {
     id: e.id, workspaceId: e.workspace_id, graphId: e.graph_id,
-    tab: e.tab, source: e.source, target: e.target, label: e.label || ''
+    tab: e.tab, source: e.source, target: e.target, label: e.label || '', edgeTypeId: e.edge_type_id || null
   };
 }
 
@@ -68,14 +70,6 @@ function writeScope(req, res) {
 function text(value, fallback = '', max = 500) {
   if (value == null) return fallback;
   return String(value).trim().slice(0, max);
-}
-
-function validPosition(position) {
-  if (!position || typeof position !== 'object') return null;
-  const x = Number(position.x);
-  const y = Number(position.y);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1_000_000 || Math.abs(y) > 1_000_000) return null;
-  return { x, y };
 }
 
 function touchGraph(db, gid) {
@@ -127,15 +121,18 @@ router.post('/graph/nodes', authRequired, (req, res) => {
       return res.status(400).json({ error: 'projectId does not belong to this workspace' });
     }
     const suppliedData = req.body?.data && typeof req.body.data === 'object' && !Array.isArray(req.body.data) ? req.body.data : {};
-    const position = validPosition(req.body?.position || suppliedData.position);
+    const position = normalizePosition(req.body?.position || suppliedData.position);
     const data = { ...suppliedData, ...(position ? { position } : {}) };
+    const requestedNodeType = text(req.body?.nodeTypeId || req.body?.nodeKind, '', 100);
+    const nodeTypeId = requestedNodeType && db.prepare('SELECT id FROM node_types WHERE workspace_id=? AND graph_id=? AND id=?').get(scope.wid, scope.gid, requestedNodeType)
+      ? requestedNodeType : null;
     const id = randomUUID();
     db.prepare(`
       INSERT INTO nodes
-        (id, workspace_id, project_id, graph_id, tab, label, kind, layer, node_kind, description, badge, data_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, workspace_id, project_id, graph_id, node_type_id, tab, label, kind, layer, node_kind, description, badge, data_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, scope.wid, projectId, scope.gid,
+      id, scope.wid, projectId, scope.gid, nodeTypeId,
       text(req.body?.tab, 'tobe', 50) || 'tobe', label,
       text(req.body?.kind, 'Concept', 100) || 'Concept',
       text(req.body?.layer, 'Knowledge', 100) || 'Knowledge',
@@ -168,16 +165,20 @@ router.patch('/graph/nodes/:id', authRequired, (req, res) => {
     const currentData = jparse(current.data_json, {});
     const suppliedData = req.body?.data && typeof req.body.data === 'object' && !Array.isArray(req.body.data) ? req.body.data : {};
     const requestedPosition = req.body?.position === undefined ? suppliedData.position : req.body.position;
-    const position = requestedPosition === undefined ? currentData.position : validPosition(requestedPosition);
+    const position = requestedPosition === undefined ? currentData.position : normalizePosition(requestedPosition);
     if (requestedPosition !== undefined && !position) return res.status(400).json({ error: 'position must contain finite x and y coordinates' });
     const data = { ...currentData, ...suppliedData, ...(position ? { position } : {}) };
+    const requestedNodeType = req.body?.nodeTypeId === undefined ? current.node_type_id : text(req.body.nodeTypeId, '', 100);
+    if (requestedNodeType && !db.prepare('SELECT id FROM node_types WHERE workspace_id=? AND graph_id=? AND id=?').get(scope.wid, scope.gid, requestedNodeType)) {
+      return res.status(400).json({ error: 'Unknown nodeTypeId for selected graph' });
+    }
 
     db.prepare(`
-      UPDATE nodes SET project_id = ?, tab = ?, label = ?, kind = ?, layer = ?, node_kind = ?,
+      UPDATE nodes SET project_id = ?, node_type_id = ?, tab = ?, label = ?, kind = ?, layer = ?, node_kind = ?,
         description = ?, badge = ?, data_json = ?
       WHERE id = ? AND workspace_id = ? AND graph_id = ?
     `).run(
-      projectId,
+      projectId, requestedNodeType || null,
       text(req.body?.tab, current.tab, 50), label,
       text(req.body?.kind, current.kind, 100), text(req.body?.layer, current.layer, 100),
       text(req.body?.nodeKind, current.node_kind, 50), text(req.body?.description, current.description, 2000),
@@ -222,15 +223,17 @@ router.post('/graph/edges', authRequired, (req, res) => {
     const target = text(req.body?.target, '', 200);
     if (!source || !target) return res.status(400).json({ error: 'source and target required' });
     if (source === target) return res.status(400).json({ error: 'Self-relations are not supported' });
-    const count = db.prepare('SELECT COUNT(*) AS c FROM nodes WHERE workspace_id = ? AND graph_id = ? AND id IN (?, ?)')
-      .get(scope.wid, scope.gid, source, target)?.c || 0;
-    if (count !== 2) return res.status(400).json({ error: 'Both nodes must belong to the selected graph' });
+    if (!relationEndpointsBelongToGraph(db, { workspaceId: scope.wid, graphId: scope.gid, source, target })) return res.status(400).json({ error: 'Both nodes must belong to the selected graph' });
     const existing = db.prepare('SELECT id FROM edges WHERE workspace_id = ? AND graph_id = ? AND source = ? AND target = ?')
       .get(scope.wid, scope.gid, source, target);
     if (existing) return res.status(409).json({ error: 'Relation already exists', id: existing.id });
+    const edgeTypeId = req.body?.edgeTypeId ? text(req.body.edgeTypeId, '', 100) : null;
+    if (edgeTypeId && !db.prepare('SELECT id FROM edge_types WHERE workspace_id=? AND graph_id=? AND id=?').get(scope.wid, scope.gid, edgeTypeId)) {
+      return res.status(400).json({ error: 'Unknown edgeTypeId for selected graph' });
+    }
     const id = randomUUID();
-    db.prepare('INSERT INTO edges (id, workspace_id, graph_id, tab, source, target, label) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, scope.wid, scope.gid, text(req.body?.tab, 'tobe', 50) || 'tobe', source, target, text(req.body?.label, '', 200));
+    db.prepare('INSERT INTO edges (id, workspace_id, graph_id, edge_type_id, tab, source, target, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, scope.wid, scope.gid, edgeTypeId, text(req.body?.tab, 'tobe', 50) || 'tobe', source, target, text(req.body?.label, '', 200));
     touchGraph(db, scope.gid);
     res.status(201).json(serializeEdge(db.prepare('SELECT * FROM edges WHERE id = ?').get(id)));
   } catch (e) {
@@ -250,14 +253,16 @@ router.patch('/graph/edges/:id', authRequired, (req, res) => {
     const source = text(req.body?.source, current.source, 200);
     const target = text(req.body?.target, current.target, 200);
     if (source === target) return res.status(400).json({ error: 'Self-relations are not supported' });
-    const count = db.prepare('SELECT COUNT(*) AS c FROM nodes WHERE workspace_id = ? AND graph_id = ? AND id IN (?, ?)')
-      .get(scope.wid, scope.gid, source, target)?.c || 0;
-    if (count !== 2) return res.status(400).json({ error: 'Both nodes must belong to the selected graph' });
+    if (!relationEndpointsBelongToGraph(db, { workspaceId: scope.wid, graphId: scope.gid, source, target })) return res.status(400).json({ error: 'Both nodes must belong to the selected graph' });
     const duplicate = db.prepare('SELECT id FROM edges WHERE workspace_id = ? AND graph_id = ? AND source = ? AND target = ? AND id <> ?')
       .get(scope.wid, scope.gid, source, target, current.id);
     if (duplicate) return res.status(409).json({ error: 'Relation already exists', id: duplicate.id });
-    db.prepare('UPDATE edges SET tab = ?, source = ?, target = ?, label = ? WHERE id = ? AND workspace_id = ? AND graph_id = ?')
-      .run(text(req.body?.tab, current.tab, 50), source, target, text(req.body?.label, current.label, 200), current.id, scope.wid, scope.gid);
+    const edgeTypeId = req.body?.edgeTypeId === undefined ? current.edge_type_id : text(req.body.edgeTypeId, '', 100);
+    if (edgeTypeId && !db.prepare('SELECT id FROM edge_types WHERE workspace_id=? AND graph_id=? AND id=?').get(scope.wid, scope.gid, edgeTypeId)) {
+      return res.status(400).json({ error: 'Unknown edgeTypeId for selected graph' });
+    }
+    db.prepare('UPDATE edges SET edge_type_id = ?, tab = ?, source = ?, target = ?, label = ? WHERE id = ? AND workspace_id = ? AND graph_id = ?')
+      .run(edgeTypeId || null, text(req.body?.tab, current.tab, 50), source, target, text(req.body?.label, current.label, 200), current.id, scope.wid, scope.gid);
     touchGraph(db, scope.gid);
     res.json(serializeEdge(db.prepare('SELECT * FROM edges WHERE id = ?').get(current.id)));
   } catch (e) {
@@ -341,6 +346,30 @@ router.get('/interest-scope/:actorId', (req, res) => {
     const wis = db.prepare(wiSql).all(...wiParams).filter(w => jparse(w.actor_ids_json, []).includes(actor.id));
     const nodeIds = new Set();
     wis.forEach(w => jparse(w.related_node_ids_json, []).forEach(id => nodeIds.add(id)));
+    const bindings = db.prepare(`SELECT * FROM role_bindings WHERE workspace_id = ? AND actor_id = ?${gid ? ' AND graph_id = ?' : ''}`)
+      .all(...(gid ? [wid, actor.id, gid] : [wid, actor.id]));
+    for (const binding of bindings) {
+      if (db.prepare('SELECT 1 FROM nodes WHERE id=? AND workspace_id=?').get(binding.object_id, wid)) nodeIds.add(binding.object_id);
+      const edge = db.prepare('SELECT source,target FROM edges WHERE id=? AND workspace_id=?').get(binding.object_id, wid);
+      if (edge) { nodeIds.add(edge.source); nodeIds.add(edge.target); }
+    }
+    const reviewRows = db.prepare(`SELECT DISTINCT r.id FROM reviews r
+      LEFT JOIN review_scopes rs ON rs.review_id=r.id
+      WHERE r.workspace_id=?${gid ? ' AND r.graph_id=?' : ''}
+        AND (r.author_id=? OR r.executor_id=?)`).all(...(gid ? [wid, gid, actor.id, actor.id] : [wid, actor.id, actor.id]));
+    for (const review of reviewRows) {
+      for (const reviewScope of db.prepare('SELECT artifact_id,object_id FROM review_scopes WHERE review_id=?').all(review.id)) {
+        if (reviewScope.artifact_id) nodeIds.add(reviewScope.artifact_id);
+        if (reviewScope.object_id) nodeIds.add(reviewScope.object_id);
+      }
+    }
+    const changeRows = db.prepare(`SELECT id FROM changes WHERE workspace_id=?${gid ? ' AND graph_id=?' : ''} AND executor_actor_id=?`)
+      .all(...(gid ? [wid, gid, actor.id] : [wid, actor.id]));
+    for (const change of changeRows) {
+      for (const artifact of db.prepare('SELECT node_id FROM change_artifacts WHERE change_id=?').all(change.id)) nodeIds.add(artifact.node_id);
+    }
+    const issueRows = db.prepare(`SELECT id FROM issues WHERE workspace_id=?${gid ? ' AND graph_id=?' : ''} AND owner_actor_id=?`)
+      .all(...(gid ? [wid, gid, actor.id] : [wid, actor.id]));
     let edgeSql = 'SELECT * FROM edges WHERE workspace_id = ?';
     const edgeParams = [wid];
     if (gid) { edgeSql += ' AND graph_id = ?'; edgeParams.push(gid); }
@@ -348,7 +377,16 @@ router.get('/interest-scope/:actorId', (req, res) => {
       if (nodeIds.has(e.source)) nodeIds.add(e.target);
       if (nodeIds.has(e.target)) nodeIds.add(e.source);
     }
-    res.json({ actorId: actor.id, roles: jparse(actor.roles_json, []), nodeIds: [...nodeIds], workItemIds: wis.map(w => w.id) });
+    res.json({
+      actorId: actor.id,
+      roles: jparse(actor.roles_json, []),
+      nodeIds: [...nodeIds],
+      workItemIds: wis.map(w => w.id),
+      reviewIds: reviewRows.map(row => row.id),
+      changeIds: changeRows.map(row => row.id),
+      issueIds: issueRows.map(row => row.id),
+      roleBindingIds: bindings.map(row => row.id)
+    });
   } catch (e) { res.status(500).json({ error: 'Failed to calculate interest scope' }); }
 });
 
@@ -372,7 +410,11 @@ router.get('/work-items', (req, res) => {
     if (req.query.layer) rows = rows.filter(w => w.layer === req.query.layer);
     res.json(rows.map(w => ({
       id: w.id, type: w.type, title: w.title, status: w.status, layer: w.layer,
-      actorIds: jparse(w.actor_ids_json, []), relatedNodeIds: jparse(w.related_node_ids_json, []), graphId: w.graph_id
+      actorIds: jparse(w.actor_ids_json, []), relatedNodeIds: jparse(w.related_node_ids_json, []), graphId: w.graph_id,
+      projectId: w.project_id, issueId: w.issue_id, changeId: w.change_id, pipeId: w.pipe_id, releaseId: w.release_id,
+      estimatedHours: w.estimated_hours || 0, requiredSpecialists: jparse(w.required_specialists_json, []),
+      budget: w.budget || 0, deadline: w.deadline, criticalPath: !!w.critical_path, riskLevel: w.risk_level || 'medium',
+      allowedTransitions: getAllowedTransitions(w.type, w.status, wid, w.graph_id)
     })));
   } catch (e) { res.status(500).json({ error: 'Failed to fetch work items' }); }
 });

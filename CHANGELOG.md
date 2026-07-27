@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0 requirements completion - 2026-07-27
+
+- Added versioned SQLite migrations and first-class NodeType, EdgeType, Issue, Change, ReviewScope, Program, Release, Conversation, Answer, Reasoning and Decision entities.
+- Added Review and Execution APIs, persisted Work Item FSM transitions, resource/financial metrics and M:N Sprint/Pipe/WorkItem links.
+- Added internal GreenMarket, Taxi, Platform Core, FSM Engine, Voice and Map validation graphs.
+- Added automatic self-hosting repository graph synchronization and OpenAPI 3.1 specification.
+- Added Delivery Control UI and expanded reproducible smoke coverage.
+
 ## 3.0.0 graph layout safety update - 2026-07-27
 
 - Added frontend collision detection and automatic separation for overlapping graph nodes.

@@ -151,7 +151,7 @@ def cover(canvas, doc):
     canvas.rect(22*mm, 248*mm, 32*mm, 2.1*mm, fill=1, stroke=0)
     canvas.setFont("NotoB", 9)
     canvas.setFillColor(colors.HexColor("#73E0F2"))
-    canvas.drawString(22*mm, 257*mm, "GRAPH PLATFORM 3.0.0")
+    canvas.drawString(22*mm, 257*mm, "GRAPH PLATFORM 3.1.0")
     canvas.setFont("NotoB", 32)
     canvas.setFillColor(colors.white)
     canvas.drawString(22*mm, 217*mm, "Graph Platform v3")
@@ -198,7 +198,7 @@ def build():
     story.append(Spacer(1, 6))
     story.append(table([
         ["Параметр", "Значение"],
-        ["Версия", "3.0.0"],
+        ["Версия", "3.1.0"],
         ["Frontend", "React 18 + Vite + TypeScript + @xyflow/react + Zustand"],
         ["Backend", "Node.js / Express 4, better-sqlite3, JWT, bcryptjs"],
         ["Offline AI", "Python standard library, Hybrid Offline AI v3"],
@@ -531,7 +531,7 @@ def build():
         ["DEPLOY.md", "Production topology and deployment guidance."],
     ], [62*mm, 104*mm], font=6.7))
     story.append(Spacer(1, 10))
-    story.append(P("Конец документа. Источником истины для конкретного поведения остаётся код текущей версии 3.0.0 и `backend/src/db/schema.sql`.", "SmallN"))
+    story.append(P("Конец документа. Источником истины для конкретного поведения остаётся код текущей версии 3.1.0 и `backend/src/db/schema.sql`.", "SmallN"))
 
     doc.build(story, onFirstPage=cover, onLaterPages=header_footer)
     print(OUT)

@@ -2,6 +2,7 @@ import { apiUrl } from './config'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FlowCanvas from './components/FlowCanvas'
 import GraphEditorPanel from './components/GraphEditorPanel'
+import DeliveryControlPanel from './components/DeliveryControlPanel'
 import KnowledgeImportDialog from './components/KnowledgeImportDialog'
 import ChatSidePanel from './components/ChatSidePanel'
 import Glossary from './components/Glossary'
@@ -563,7 +564,7 @@ export default function App() {
 	            )}
 
                 {!present && (
-                  <GraphEditorPanel
+                <GraphEditorPanel
                     nodes={nodes}
                     selectedNode={selectedNode}
                     selectedEdge={selectedEdge}
@@ -580,6 +581,15 @@ export default function App() {
                     onUpdateEdge={updateEdge}
                     onDeleteEdge={deleteEdge}
                     onClearSelection={() => { setPinned(null); setSelectedEdgeId(null); setHighlightIds([]) }}
+                  />
+                )}
+
+                {!present && (
+                  <DeliveryControlPanel
+                    headers={headers}
+                    graph={activeGraph}
+                    nodes={nodes}
+                    canEdit={!!activeGraph?.canEdit}
                   />
                 )}
 
@@ -656,8 +666,9 @@ export default function App() {
             <section className="insight-grid">
               <ActivityFeed headers={headers} />
               <PlatformPanel actors={actors} workItems={workItems} engines={health?.engines || []} layers={layerOptions} onTransition={async (id: string, event: string) => {
-                const res = await fetch(apiUrl(`/api/fsm/${id}/transition`), { method: 'POST', headers: headers(), body: JSON.stringify({ event }) })
-	                if (!res.ok) showToast(tr('Для изменения FSM нужен доступ', 'Access is required to update the FSM'))
+                const res = await fetch(apiUrl(`/api/work-items/${id}/transition`), { method: 'POST', headers: headers(), body: JSON.stringify({ event }) })
+	                if (!res.ok) showToast(tr('Переход FSM недоступен из текущего статуса', 'FSM transition is unavailable from the current state'))
+                else await refreshMeta()
               }} />
             </section>
 

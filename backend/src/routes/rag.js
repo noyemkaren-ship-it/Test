@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { authRequired } from '../middleware/auth.js';
 import { getDb, jparse, jstr, wsId, graphId, validateWorkspaceAccess, validateGraphAccess, tokenize, chunkText } from '../utils/helper.js';
+import { rankChunks } from '../engines/rag.js';
 
 const router = Router();
 
@@ -71,16 +72,7 @@ router.get('/rag/search', authRequired, (req, res) => {
   let sql = 'SELECT * FROM chunks WHERE workspace_id = ?'; const params = [wid];
   if (gid) { sql += ' AND graph_id = ?'; params.push(gid); }
   const chunks = getDb().prepare(sql).all(...params);
-  const scored = chunks.map(c => {
-    let score = 0;
-    const tokens = new Set(jparse(c.tokens_json, []));
-    const lower = String(c.text || '').toLowerCase();
-    for (const t of qTokens) {
-      if (tokens.has(t)) score += 1.25;
-      if (lower.includes(t)) score += 0.35;
-    }
-    return { chunkId: c.id, documentId: c.document_id, text: c.text, score, nodeIds: jparse(c.node_ids_json, []), graphId: c.graph_id };
-  }).filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.min(20, Number(req.query.limit) || 6));
+  const scored = rankChunks(chunks, qTokens, { limit: req.query.limit, parseJson: value => jparse(value, []) });
   res.json(scored);
 });
 

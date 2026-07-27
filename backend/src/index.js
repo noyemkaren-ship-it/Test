@@ -21,6 +21,15 @@ import ragRoutes from './routes/rag.js';
 import ratingsRoutes from './routes/ratings.js';
 import graphsRoutes from './routes/graphs.js';
 import publicRoutes from './routes/public.js';
+import requirementsRoutes from './routes/requirements.js';
+import reviewsRoutes from './routes/reviews.js';
+import selfHostingRoutes from './routes/selfHosting.js';
+import openapiRoutes from './routes/openapi.js';
+import { ensureAllGraphHierarchy } from './services/hierarchy.js';
+import { materializeAllOntologyTypes, materializeOntologyTypes } from './services/ontologyTypes.js';
+import { startSelfHosting } from './services/selfHosting.js';
+import { ensureInternalValidationProjects } from './services/internalValidation.js';
+import { ensureReviewMetadata } from './services/reviewMetadata.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -46,18 +55,23 @@ const db = getDb();
 const seeded = seedIfEmpty();
 if (seeded) console.log('SQLite seeded');
 ensureDentistChoiceGraph();
+ensureInternalValidationProjects(db);
+ensureReviewMetadata(db);
+ensureAllGraphHierarchy(db);
+materializeAllOntologyTypes(db);
+startSelfHosting(db);
 
 app.get('/api/health', (_req, res) => {
   const key = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
   const graphs = db.prepare('SELECT COUNT(*) AS c FROM graphs').get()?.c || 0;
   res.json({
     ok: true,
-    version: '3.0.0',
+    version: '3.1.0',
     db: 'sqlite',
     graphs,
     llmConfigured: !!key,
     llmMode: key ? 'hybrid-external-first' : 'offline-first',
-    engines: ['Graph', 'FSM', 'Ontology', 'RAG', 'Hybrid Offline AI', 'Auth', 'Workspace', 'Templates'],
+    engines: ['Graph', 'FSM', 'Review', 'Ontology', 'RAG', 'Visualization', 'Execution', 'Hybrid Offline AI', 'Auth', 'Workspace', 'Templates'],
     publicDomains: true,
     tenantIsolation: 'membership + public-read'
   });
@@ -66,6 +80,10 @@ app.get('/api/health', (_req, res) => {
 // Public-first resources and graph CRUD.
 app.use('/api', publicRoutes);
 app.use('/api', graphsRoutes);
+app.use('/api', requirementsRoutes);
+app.use('/api', reviewsRoutes);
+app.use('/api', selfHostingRoutes);
+app.use('/api', openapiRoutes);
 
 // FSM. Guest reads require an explicitly selected public graph; members may use workspace scope.
 function fsmScope(req) {
@@ -132,44 +150,9 @@ app.post('/api/ontology/extend', authRequired, (req, res) => {
     const row = db.prepare('SELECT * FROM ontology WHERE workspace_id = ? AND graph_id = ?').get(wid, gid);
     const extended = extendProfile(row ? jparse(row.profile_json, null) : null, req.body);
     db.prepare('INSERT OR REPLACE INTO ontology (workspace_id, graph_id, profile_json) VALUES (?, ?, ?)').run(wid, gid, jstr(extended));
+    materializeOntologyTypes(db, wid, gid, extended);
     clearMachinesCache(wid);
     res.json(extended);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Reviews are readable for an explicitly selected public graph. Writes require workspace access.
-app.get('/api/reviews', (req, res) => {
-  try {
-    let wid = wsId(req); const gid = graphId(req);
-    if (gid) {
-      const graph = db.prepare('SELECT workspace_id FROM graphs WHERE id = ?').get(gid);
-      if (!graph || !validateGraphAccess(req, gid)) return res.json([]);
-      wid = graph.workspace_id;
-    } else if (!validateWorkspaceAccess(req, wid)) {
-      return res.json([]);
-    }
-    let sql = 'SELECT * FROM reviews WHERE workspace_id = ?'; const params = [wid];
-    if (gid) { sql += ' AND graph_id = ?'; params.push(gid); }
-    res.json(db.prepare(`${sql} ORDER BY date DESC`).all(...params) || []);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/reviews', authRequired, (req, res) => {
-  try {
-    const wid = wsId(req); const gid = graphId(req);
-    if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
-    if (gid) {
-      const graph = db.prepare('SELECT workspace_id FROM graphs WHERE id = ?').get(gid);
-      if (!graph || graph.workspace_id !== wid || !validateGraphAccess(req, gid, { write: true })) {
-        return res.status(403).json({ error: 'Write access denied' });
-      }
-    }
-    const text = String(req.body?.text || '').trim();
-    if (!text) return res.status(400).json({ error: 'text required' });
-    const id = randomUUID();
-    db.prepare('INSERT INTO reviews (id, workspace_id, graph_id, author_id, text, status, date) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))')
-      .run(id, wid, gid || null, req.user?.sub || req.user?.id, text.slice(0, 4000), 'open');
-    res.status(201).json({ id, ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -213,6 +196,7 @@ app.post('/api/role-bindings', authRequired, (req, res) => {
     res.status(201).json({ id, ok: true });
   } catch (e) {
     if (String(e.message || '').includes('UNIQUE')) return res.status(409).json({ error: 'Role binding already exists' });
+    if (String(e.message || '').includes('Customer and Owner')) return res.status(409).json({ error: e.message });
     res.status(500).json({ error: e.message });
   }
 });
@@ -241,7 +225,7 @@ app.use((err, _req, res, _next) => {
 });
 
 if (process.env.NODE_ENV !== 'test' || process.env.START_SERVER_IN_TEST === '1') {
-  app.listen(PORT, '0.0.0.0', () => console.log(`Graph Platform v3.0 http://localhost:${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => console.log(`Graph Platform v3.1 http://localhost:${PORT}`));
 }
 
 export default app;

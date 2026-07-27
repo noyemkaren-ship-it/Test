@@ -46,11 +46,28 @@ def main() -> int:
     assert isinstance(public, list) and public
     ok(f"public catalog without auth ({len(public)} domains)")
 
+    required_ecosystems = {"greenmarket", "taxi", "platform-core", "fsm-engine", "voice", "map", "graph-platform-self"}
+    assert required_ecosystems.issubset({graph.get("slug") for graph in public})
+    ok("internal validation ecosystems and self-hosting graph")
+
+    _, self_host = request("GET", "/self-host/status")
+    assert isinstance(self_host["automatic"], bool) and self_host["sources"] > 0 and self_host["error"] is None
+    ok(f"self-hosting repository sync ({self_host['sources']} sources)")
+
+    _, openapi = request("GET", "/openapi.yaml")
+    assert "openapi: 3.1.0" in openapi and "/issues:" in openapi and "/conversations:" in openapi
+    ok("OpenAPI specification is served")
+
     dentist = next((graph for graph in public if graph.get("slug") == "dentist-choice"), None)
     assert dentist and dentist["name"] == "Выбор стоматолога"
     _, dentist_graph = request("GET", "/public/domains/dentist-choice/graph?tab=tobe")
     assert len(dentist_graph["nodes"]) == 22 and len(dentist_graph["edges"]) == 26
     ok("built-in Dentist Choice graph (22 nodes, 26 relations)")
+
+    bank = next(graph for graph in public if graph.get("slug") == "bank")
+    _, seeded_reviews = request("GET", "/reviews", headers={"X-Graph-Id": bank["id"]})
+    assert seeded_reviews and all(item["scopes"] and item["status"] in {"approved", "pending"} for item in seeded_reviews)
+    ok("seeded reviews have normalized ReviewScope and status")
 
     _, graphs = request("GET", "/graphs")
     assert all((g.get("visibility") or "public") == "public" for g in graphs)
@@ -84,6 +101,7 @@ def main() -> int:
     create_headers = {**headers, "X-Workspace-Id": own_ws}
     _, created = request("POST", "/graphs", {"name": f"Smoke Domain {stamp}", "visibility": "private"}, headers=create_headers, expected=(201,))
     gid = created["id"]
+    assert created["projectId"]
     ok("create private domain in own workspace")
 
     graph_headers = {**create_headers, "X-Graph-Id": gid}
@@ -222,6 +240,24 @@ def main() -> int:
     assert any(item["id"] == "smoke-type" for item in extended["nodeTypes"])
     ok("default ontology and graph-scoped extension")
 
+    _, node_types = request("GET", "/node-types", headers=graph_headers)
+    _, edge_types = request("GET", "/edge-types", headers=graph_headers)
+    assert any(item["id"] == "smoke-type" for item in node_types) and any(item["id"] == "depends" for item in edge_types)
+    request("POST", "/edge-types", {"id": "validates", "label": "validates"}, headers=graph_headers, expected=(201,))
+    ok("NodeType and EdgeType are materialized entities")
+
+    _, service_actor = request("POST", "/actors", {
+        "name": "Smoke CI Service", "type": "Service", "roles": ["Исполнитель"]
+    }, headers=graph_headers, expected=(201,))
+    assert service_actor["type"] == "Service"
+    ok("Actor CRUD supports Human, AIAgent, Service and ExternalSystem model")
+
+    request("POST", "/role-bindings", {"actorId": service_actor["id"], "objectId": first_id, "role": "Заказчик"}, headers=graph_headers, expected=(201,))
+    request("POST", "/role-bindings", {"actorId": service_actor["id"], "objectId": first_id, "role": "Owner"}, headers=graph_headers, expected=(409,))
+    _, actor_scope = request("GET", f"/interest-scope/{service_actor['id']}", headers=graph_headers)
+    assert first_id in actor_scope["nodeIds"] and actor_scope["roleBindingIds"]
+    ok("Customer and Owner separation is enforced; Interest Scope is computed from role bindings")
+
     rag_text = "The smoke gateway queries the graph knowledge base and returns source-aware answers for platform verification."
     _, ingested = request("POST", "/rag/ingest", {
         "title": "Smoke editor evidence",
@@ -233,10 +269,82 @@ def main() -> int:
     assert hits and first_id in hits[0]["nodeIds"]
     ok("RAG ingest and graph-scoped retrieval")
 
-    request("POST", "/reviews", {"text": "Smoke review for the edited graph"}, headers=graph_headers, expected=(201,))
+    _, issue = request("POST", "/issues", {
+        "projectId": created["projectId"], "type": "KnowledgeDefect", "title": "Missing source lineage",
+        "description": "The verification graph must preserve source lineage", "severity": "high"
+    }, headers=graph_headers, expected=(201,))
+    issue_id = issue["id"]
+    _, work_item = request("POST", "/work-items", {
+        "projectId": created["projectId"], "issueId": issue_id, "type": "KnowledgeDefect",
+        "title": "Restore source lineage", "status": "open", "layer": "Project",
+        "relatedNodeIds": [first_id, second_id], "estimatedHours": 13.5,
+        "requiredSpecialists": ["Data Engineer", "Reviewer"], "budget": 125000,
+        "deadline": "2026-08-15", "criticalPath": True, "riskLevel": "high"
+    }, headers=graph_headers, expected=(201,))
+    work_item_id = work_item["id"]
+    assert work_item["issueId"] == issue_id and work_item["estimatedHours"] == 13.5
+    assert work_item["budget"] == 125000 and work_item["criticalPath"] is True
+    _, work_transitions = request("GET", f"/work-items/{work_item_id}/transitions", headers=graph_headers)
+    assert work_transitions["allowed"] == ["TRIAGE"]
+    _, transitioned_work = request("POST", f"/work-items/{work_item_id}/transition", {"event": "TRIAGE"}, headers=graph_headers)
+    assert transitioned_work["from"] == "open" and transitioned_work["to"] == "triaged"
+    ok("Issue to WorkItem hierarchy, metrics and persisted FSM transition")
+
+    _, change = request("POST", "/changes", {
+        "projectId": created["projectId"], "title": "Gateway lineage change",
+        "description": "Connect implementation to test and SQL evidence", "estimatedHours": 21,
+        "budget": 180000, "deadline": "2026-08-20", "riskLevel": "medium",
+        "metrics": {"coverageTarget": 100},
+        "artifacts": [
+            {"nodeId": first_id, "perspective": "sql"},
+            {"nodeId": second_id, "perspective": "test"}
+        ]
+    }, headers=graph_headers, expected=(201,))
+    assert {artifact["perspective"] for artifact in change["artifacts"]} == {"sql", "test"}
+    ok("Change links SQL/test perspectives and stores executor metrics")
+
+    _, program = request("POST", "/programs", {"name": "Smoke Program"}, headers=graph_headers, expected=(201,))
+    program_id = program["id"]
+    _, sprint = request("POST", "/sprints", {
+        "projectId": created["projectId"], "name": "Smoke Sprint", "start": "2026-08-01", "end": "2026-08-14"
+    }, headers=graph_headers, expected=(201,))
+    _, pipe = request("POST", "/pipes", {
+        "projectId": created["projectId"], "name": "Delivery Pipe", "stages": ["Backlog", "Build", "Review", "Done"]
+    }, headers=graph_headers, expected=(201,))
+    _, release = request("POST", "/releases", {
+        "projectId": created["projectId"], "name": "Smoke Release", "targetDate": "2026-08-20"
+    }, headers=graph_headers, expected=(201,))
+    request("POST", f"/sprints/{sprint['id']}/pipes", {"pipeId": pipe["id"]}, headers=graph_headers, expected=(201,))
+    request("POST", f"/sprints/{sprint['id']}/work-items", {"workItemId": work_item_id}, headers=graph_headers, expected=(201,))
+    request("POST", f"/pipes/{pipe['id']}/work-items", {"workItemId": work_item_id}, headers=graph_headers, expected=(201,))
+    request("POST", f"/issues/{issue_id}/pipes", {"pipeId": pipe["id"]}, headers=graph_headers, expected=(201,))
+    _, execution_graph = request("GET", "/execution-graph", headers=graph_headers)
+    assert any(item["sprint_id"] == sprint["id"] and item["pipe_id"] == pipe["id"] for item in execution_graph["sprintPipes"])
+    assert any(item["id"] == release["id"] for item in execution_graph["releases"])
+    ok("Portfolio/Program/Project/Pipe/Release graph and independent Sprint-Pipe M:N links")
+
+    _, metrics = request("GET", "/transformation-metrics", headers=graph_headers)
+    assert metrics["resources"]["estimatedHours"] >= 13.5 and metrics["resources"]["budget"] >= 125000
+    assert {item["layer"] for item in metrics["layers"]}.issuperset({"Implementation", "Knowledge"})
+    ok("Transformation Graph aggregates four-layer resource and financial metrics")
+
+    _, review = request("POST", "/reviews", {
+        "text": "Smoke review for the edited graph",
+        "executorId": service_actor["id"],
+        "scope": {"projectId": created["projectId"], "artifactId": first_id, "objectId": second_id, "version": "v2"}
+    }, headers=graph_headers, expected=(201,))
+    review_id = review["id"]
+    assert review["scopes"][0]["projectId"] == created["projectId"] and review["scopes"][0]["version"] == "v2"
+    request("POST", f"/reviews/{review_id}/votes", {"actorId": service_actor["id"], "vote": "approve", "comment": "Verified"}, headers=graph_headers, expected=(201,))
+    _, started_review = request("POST", f"/reviews/{review_id}/transition", {"event": "start"}, headers=graph_headers)
+    assert started_review["to"] == "in_review"
+    _, approved_review = request("POST", f"/reviews/{review_id}/transition", {"event": "approve"}, headers=graph_headers)
+    assert approved_review["to"] == "approved"
+    _, review_history = request("GET", f"/reviews/{review_id}/history", headers=graph_headers)
+    assert {item["event"] for item in review_history}.issuperset({"created", "vote", "start", "approve"})
     _, reviews = request("GET", "/reviews", headers=graph_headers)
-    assert any(item["text"] == "Smoke review for the edited graph" for item in reviews)
-    ok("graph review create and read")
+    assert any(item["id"] == review_id and item["status"] == "approved" for item in reviews)
+    ok("ReviewScope, author/executor, voting, approval FSM and immutable history")
 
     _, template = request("POST", f"/workspaces/{own_ws}/templates", {
         "name": "Smoke reproducible template",
@@ -254,7 +362,17 @@ def main() -> int:
         "tab": "tobe",
     }, headers={**graph_headers, "X-Session-Id": f"smoke-{stamp}"})
     assert copilot["answer"] and copilot["offline"] is True and first_id in copilot["sources"]["nodes"]
-    ok("Copilot receives selected graph and RAG context")
+    assert copilot["conversationId"] and copilot["answerId"] and copilot["usage"]["latencyMs"] >= 0
+    _, conversation = request("GET", f"/conversations/{copilot['conversationId']}", headers=graph_headers)
+    assert any(item["id"] == copilot["questionId"] for item in conversation["questions"])
+    assert any(item["id"] == copilot["answerId"] for item in conversation["answers"])
+    assert conversation["reasoning"] and conversation["reasoning"][0]["evidence"]["nodeIds"]
+    request("PATCH", f"/answers/{copilot['answerId']}/feedback", {"feedback": "source-aware"}, headers=graph_headers)
+    _, decision = request("POST", f"/conversations/{copilot['conversationId']}/decisions", {
+        "answerId": copilot["answerId"], "title": "Use graph-aware retrieval", "rationale": "Verified source context"
+    }, headers=graph_headers, expected=(201,))
+    assert decision["status"] == "proposed"
+    ok("Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback")
 
     request("DELETE", f"/graph/edges/{edge_id}", headers=graph_headers)
     _, remaining_edges = request("GET", "/graph/edges?tab=tobe", headers=graph_headers)
@@ -269,6 +387,9 @@ def main() -> int:
 
     request("DELETE", f"/templates/{template_id}", headers=graph_headers)
     ok("cleanup template")
+
+    request("DELETE", f"/programs/{program_id}", headers=create_headers)
+    ok("cleanup standalone program")
 
     request("DELETE", f"/graphs/{imported_gid}", headers=create_headers, expected=(200,))
     ok("cleanup imported member graph")

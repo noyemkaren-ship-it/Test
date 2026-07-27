@@ -9,6 +9,8 @@ import {
   KnowledgePackageError,
   importPrivateKnowledgePackage
 } from '../services/knowledgePackage.js';
+import { ensureWorkspaceProject } from '../services/hierarchy.js';
+import { materializeOntologyTypes } from '../services/ontologyTypes.js';
 
 const router = Router();
 const importLimiter = createRateLimiter({
@@ -22,6 +24,7 @@ function serializeGraph(g) {
   return {
     id: g.id,
     workspaceId: g.workspace_id,
+    projectId: g.project_id || null,
     name: g.name,
     slug: g.slug,
     description: g.description || '',
@@ -103,7 +106,7 @@ router.post('/graphs', authRequired, (req, res) => {
     const wid = wsId(req);
     if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
 
-    const { name, description, visibility = 'public' } = req.body || {};
+    const { name, description, visibility = 'public', projectId } = req.body || {};
     if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'name required' });
     if (!['public', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be public or private' });
 
@@ -113,13 +116,16 @@ router.post('/graphs', authRequired, (req, res) => {
     let i = 2;
     while (db.prepare('SELECT 1 FROM graphs WHERE slug = ?').get(slug)) slug = `${base}-${i++}`;
 
-    db.prepare(`
-      INSERT INTO graphs (id, workspace_id, name, slug, description, visibility, settings_json)
-      VALUES (?, ?, ?, ?, ?, ?, '{}')
-    `).run(id, wid, String(name).trim(), slug, String(description || '').trim(), visibility);
-
-    db.prepare('INSERT OR REPLACE INTO ontology (workspace_id, graph_id, profile_json) VALUES (?, ?, ?)')
-      .run(wid, id, JSON.stringify(DEFAULT_PROFILE));
+    db.transaction(() => {
+      const linkedProjectId = ensureWorkspaceProject(db, wid, String(name).trim(), projectId || null);
+      db.prepare(`
+        INSERT INTO graphs (id, workspace_id, project_id, name, slug, description, visibility, settings_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '{}')
+      `).run(id, wid, linkedProjectId, String(name).trim(), slug, String(description || '').trim(), visibility);
+      db.prepare('INSERT OR REPLACE INTO ontology (workspace_id, graph_id, profile_json) VALUES (?, ?, ?)')
+        .run(wid, id, JSON.stringify(DEFAULT_PROFILE));
+      materializeOntologyTypes(db, wid, id, DEFAULT_PROFILE);
+    })();
 
     res.status(201).json(serializeGraph(db.prepare('SELECT * FROM graphs WHERE id = ?').get(id)));
   } catch (e) {
@@ -138,11 +144,14 @@ router.patch('/graphs/:id', authRequired, (req, res) => {
     const name = req.body?.name == null ? graph.name : String(req.body.name).trim();
     const description = req.body?.description == null ? graph.description : String(req.body.description).trim();
     const visibility = req.body?.visibility == null ? graph.visibility : req.body.visibility;
+    const projectId = req.body?.projectId === undefined
+      ? graph.project_id
+      : ensureWorkspaceProject(db, graph.workspace_id, name, req.body.projectId || null);
     if (!name) return res.status(400).json({ error: 'name cannot be empty' });
     if (!['public', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be public or private' });
 
-    db.prepare("UPDATE graphs SET name = ?, description = ?, visibility = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(name, description, visibility, graph.id);
+    db.prepare("UPDATE graphs SET project_id = ?, name = ?, description = ?, visibility = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(projectId, name, description, visibility, graph.id);
     res.json(serializeGraph(db.prepare('SELECT * FROM graphs WHERE id = ?').get(graph.id)));
   } catch (e) {
     console.error('PATCH /graphs/:id error:', e.message);

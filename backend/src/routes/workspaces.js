@@ -31,10 +31,12 @@ router.post('/workspaces', authRequired, (req, res) => {
   const id = randomUUID();
   const name = String(req.body?.name || 'New Workspace').trim().slice(0, 160);
   const type = String(req.body?.type || 'studio').trim().slice(0, 40);
+  const parentId = req.body?.parentId ? String(req.body.parentId) : null;
   if (!name) return res.status(400).json({ error: 'name required' });
+  if (parentId && !validateWorkspaceAccess(req, parentId)) return res.status(403).json({ error: 'Parent workspace access denied' });
 
   const tx = db.transaction(() => {
-    db.prepare('INSERT INTO workspaces (id, name, type) VALUES (?, ?, ?)').run(id, name, type);
+    db.prepare('INSERT INTO workspaces (id, name, type, parent_id) VALUES (?, ?, ?, ?)').run(id, name, type, parentId);
     const uid = req.user.sub || req.user.id;
     if (uid && uid !== 'api') {
       db.prepare('INSERT INTO memberships (user_id, workspace_id, role) VALUES (?, ?, ?)').run(uid, id, 'admin');
@@ -43,7 +45,7 @@ router.post('/workspaces', authRequired, (req, res) => {
       .run(id, jstr(DEFAULT_PROFILE));
   });
   tx();
-  res.status(201).json({ id, name, type });
+  res.status(201).json({ id, name, type, parentId });
 });
 
 router.get('/workspaces/:wsId/actors', authRequired, (req, res) => {
@@ -201,6 +203,7 @@ router.post('/projects', authRequired, (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 160);
   const templateId = req.body?.templateId ? String(req.body.templateId) : null;
   const portfolioId = req.body?.portfolioId ? String(req.body.portfolioId) : null;
+  const programId = req.body?.programId ? String(req.body.programId) : null;
   if (!name) return res.status(400).json({ error: 'name required' });
 
   const projectId = randomUUID();
@@ -224,9 +227,15 @@ router.post('/projects', authRequired, (req, res) => {
       if (!portfolio) throw new Error('Portfolio not found');
     }
 
-    db.prepare(`INSERT INTO projects (id, workspace_id, portfolio_id, name, template_id, template_version)
-      VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(projectId, wid, portfolioId, name, templateId, templateVersion);
+    if (programId) {
+      const program = db.prepare('SELECT id,portfolio_id FROM programs WHERE id = ? AND workspace_id = ?').get(programId, wid);
+      if (!program) throw new Error('Program not found');
+      if (portfolioId && program.portfolio_id && program.portfolio_id !== portfolioId) throw new Error('Program belongs to another portfolio');
+    }
+
+    db.prepare(`INSERT INTO projects (id, workspace_id, portfolio_id, program_id, name, template_id, template_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(projectId, wid, portfolioId, programId, name, templateId, templateVersion);
 
     if (!snapshot) return;
     const nodeMap = new Map();

@@ -1,342 +1,1112 @@
-GRAPH PLATFORM v3
-ИТОГОВЫЙ ТЕХНИЧЕСКИЙ ОТЧЁТ ПО УСТРАНЕНИЮ ЗАМЕЧАНИЙ
+ТЕХНИЧЕСКИЙ АУДИТ GRAPH PLATFORM 3.1.0
+Относительно Graph_Platform_Requirements.md
 Дата проверки: 27.07.2026
-Формат: требование → изменение → команда → фактический результат
+Репозиторий: /Users/karengevorgyan/Documents/boo/graph-platform
+Базовый commit: 4b302ee48fb6ccb275d2d2e82ca046d5f4bdb5e4
+Объект проверки: текущее рабочее дерево с изменениями версии 3.1.0
 
-Уважаемый Валерий!
+Правило отчёта: ниже отмечено только то, что подтверждено файлами, применённой SQLite-схемой, HTTP-запросами или выводом команд. PostgreSQL исключён из требований по прямому указанию заказчика; согласованная БД — SQLite WAL.
 
-После последней проверки я не ограничился переработкой текста отчёта, а внёс изменения непосредственно в проект и заново проверил его на чистой временной базе.
+## 1. Технический стек
 
-ИТОГ КОРОТКО
+### 1.1 Пакетный менеджер
 
-1. Все проверяемые пробелы, указанные в последнем разборе, устранены в коде.
-2. Исходный первый этап «HTML-прототип → React + TypeScript + React Flow с сохранением функций редактора» доведён с 6/10 до 10/10 требований, то есть до 100% по зафиксированному чек-листу этапа.
-3. В рабочую панель добавлен полный CRUD узлов и связей: создание, просмотр, изменение и удаление.
-4. Drag & drop теперь не является временным визуальным действием: координаты сохраняются в SQLite и восстанавливаются при повторном запросе. Frontend дополнительно проверяет координаты и автоматически разводит пересекающиеся узлы с безопасным шагом 340×280 px.
-5. Редактор снова является главным экраном продукта. Презентационный обзор не мешает работе и открывается отдельно кнопкой «О платформе».
-6. Создан независимый сценарий аудита одной командой. Он устанавливает зависимости по lock-файлам, проверяет их безопасность, собирает frontend и выполняет интеграционные проверки на новой временной БД.
-7. Итог автоматической проверки: 35/35 API-сценариев успешно, 25/25 backend JS-файлов успешно, 3/3 Python-файла успешно, TypeScript — код 0, production build — успешно, npm audit frontend/backend — 0 уязвимостей.
-8. В процессе проверки найден и дополнительно исправлен дефект применения расширений онтологии: раньше новый тип становился активным только после перезагрузки, теперь применяется в том же запросе.
-9. Противоречие по происхождению репозитория больше не замалчивается и не подменяется предположением. Текущая версия зафиксирована как самостоятельно проверяемый v3-репозиторий; доступные и отсутствующие Git-доказательства описаны в PROVENANCE.md.
-10. По факту реализовано существенно больше первоначального ТЗ первого этапа: кроме редактора, в проекте уже есть workspace isolation, public/private графы, RAG, Graph Copilot, FSM, расширяемая онтология, Reviews, templates, ролевые проекции, мультиязычность, темы и отдельные настройки.
+Команды:
 
-======================================================================
-1. ЧТО ИМЕННО БЫЛО ИСПРАВЛЕНО
-======================================================================
+```text
+$ node --version
+v24.16.0
 
-1.1. Рабочая панель вместо обязательного лендинга
+$ npm --version
+11.13.0
+```
 
-Было:
-- до React Flow требовалось прокручивать презентационный блок;
-- рабочий продукт визуально воспринимался как лендинг.
+Пакетный менеджер: npm 11.13.0.
+Lock-файлы: backend/package-lock.json и frontend/package-lock.json.
 
-Стало:
-- основным содержимым первого экрана является Graph Control + React Flow;
-- обзор платформы скрыт по умолчанию;
-- обзор открывается отдельной кнопкой «О платформе»;
-- режим «Презентация» сохранён как дополнительный, а не основной сценарий.
+Чистая установка выполнена командой `sh scripts/audit.sh`:
 
-Статус: ИСПРАВЛЕНО.
-
-1.2. Создание узлов прямо в основном редакторе
-
-Добавлено:
-- кнопка «+ Узел»;
-- поля названия, типа, слоя, формы и описания;
-- привязка нового узла к выбранному graph/workspace/tab;
-- серверная валидация;
-- возврат созданного узла и немедленное отображение без перезагрузки страницы.
-
-API: POST /api/graph/nodes
-Статус: ИСПРАВЛЕНО.
-
-1.3. Изменение узлов
-
-Добавлено:
-- выбор узла кликом;
-- редактирование его основных полей в рабочей панели;
-- сохранение через защищённый API;
-- обновление UI после ответа сервера;
-- проверка принадлежности узла выбранному графу и workspace.
-
-API: PATCH /api/graph/nodes/:id
-Статус: ИСПРАВЛЕНО.
-
-1.4. Удаление узлов
-
-Добавлено:
-- удаление выбранного узла с подтверждением;
-- транзакционное удаление входящих и исходящих связей;
-- синхронное обновление интерфейса;
-- возврат числа удалённых связей.
-
-API: DELETE /api/graph/nodes/:id
-Статус: ИСПРАВЛЕНО.
-
-1.5. Полный CRUD связей
-
-Добавлено:
-- создание связи через форму source/target;
-- создание связи непосредственно перетягиванием между React Flow handles;
-- выбор существующей связи кликом;
-- изменение названия, source и target;
-- удаление связи;
-- запрет self-relation;
-- запрет duplicate relation;
-- запрет cross-graph relation.
-
-API:
-- POST /api/graph/edges
-- PATCH /api/graph/edges/:id
-- DELETE /api/graph/edges/:id
-
-Статус: ИСПРАВЛЕНО.
-
-1.6. Сохранение layout
-
-Было:
-- позиции определялись frontend-константами;
-- перетаскивание не доказывало долговременное сохранение.
-
-Стало:
-- React Flow использует сохранённую позицию node.data.position;
-- после drag stop координаты отправляются на backend;
-- backend валидирует конечные числовые x/y;
-- координаты записываются в nodes.data_json;
-- GET /api/graph/nodes возвращает их после нового запроса;
-- template snapshot также сохраняет layout.
-
-Статус: ИСПРАВЛЕНО И ПОКРЫТО ИНТЕГРАЦИОННЫМ ТЕСТОМ.
-
-1.7. Защита операций редактора
-
-Добавлено и подтверждено:
-- guest может читать public graph, но не может изменять данные;
-- запись требует JWT или разрешённый service access;
-- пользователь может изменять только граф workspace, участником которого он является;
-- private graph другого workspace не читается и не изменяется;
-- узлы из разных графов нельзя соединить одной связью;
-- без выбранного graph редактирование не выполняется.
-
-Статус: ИСПРАВЛЕНО И ПРОВЕРЕНО.
-
-1.8. Расширение онтологии без отложенного применения
-
-Во время нового аудита обнаружено:
-- extension сохранялся, но добавленный node type включался в активный профиль только после повторной загрузки.
-
-Исправление:
-- extendProfile сразу материализует обновлённый профиль через loadProfile;
-- новый тип доступен уже в ответе POST /api/ontology/extend;
-- сценарий добавлен в smoke-тест.
-
-Статус: ДОПОЛНИТЕЛЬНО ОБНАРУЖЕНО И ИСПРАВЛЕНО.
-
-1.9. Уязвимости frontend-зависимостей
-
-Первый контрольный npm audit показал 2 проблемы в старой цепочке Vite/esbuild: 1 moderate и 1 high.
-
-Исправление:
-- Vite обновлён с 5.4 до 8.1.5;
-- @vitejs/plugin-react обновлён с 4.3 до 6.0.4;
-- lock-файл пересобран;
-- TypeScript и production build повторно выполнены;
-- npm audit frontend: 0 уязвимостей;
-- npm audit backend: 0 уязвимостей.
-
-Статус: ИСПРАВЛЕНО И ДОБАВЛЕНО В ОБЯЗАТЕЛЬНЫЙ АУДИТ.
-
-1.10. Импорт JSON для обычного зарегистрированного аккаунта
-
-Было:
-- кнопка импорта существовала только внутри Admin Console;
-- пользователь с ролью member не мог найти или выполнить загрузку.
-
-Стало:
-- заметная кнопка «Загрузить JSON» находится над основным графом;
-- файл можно выбрать, перетащить или вставить вручную;
-- до импорта показывается название и количество узлов/связей;
-- новый граф всегда создаётся private в workspace текущего пользователя;
-- импорт не может перезаписать существующий или чужой граф;
-- проверяются структура, размер, ссылки edges, опасные конструкции и нецензурное содержимое;
-- дополнительный ключ не требуется: импорт доступен любому зарегистрированному пользователю;
-- расширенный merge/replace остаётся только у администратора.
-
-Статус: ИСПРАВЛЕНО И ПРОВЕРЕНО ОБЫЧНЫМ MEMBER-АККАУНТОМ.
-
-1.11. Новый публичный граф «Выбор стоматолога»
-
-Добавлено:
-- 22 узла и 26 связей;
-- проверка лицензии, квалификации, плана, рисков, стоимости и информированного согласия;
-- сохранённый layout;
-- официальные источники Росздравнадзора и Минздрава;
-- дисклеймер, что граф не заменяет медицинскую консультацию;
-- автоматическая установка графа и в новую, и в уже существующую v3-базу.
-
-Статус: ЗАГРУЖЕНО И ДОСТУПНО В PUBLIC CATALOG.
-
-======================================================================
-2. ИСХОДНОЕ ТЗ ПЕРВОГО ЭТАПА: 10 ИЗ 10
-======================================================================
-
-№  Требование                                      Факт / доказательство                                  Статус
-1  Перенос на React                                React 18, production build                              ГОТОВО
-2  TypeScript                                      tsc --noEmit, exit code 0                               ГОТОВО
-3  React Flow                                      @xyflow/react, 189 modules transformed                  ГОТОВО
-4  Визуализация узлов и связей                     nodes/edges API + React Flow canvas                     ГОТОВО
-5  Добавление узлов                                UI + POST /api/graph/nodes                              ГОТОВО
-6  Редактирование узлов                            UI + PATCH /api/graph/nodes/:id                         ГОТОВО
-7  Удаление узлов                                  UI + DELETE, каскадная очистка связей                   ГОТОВО
-8  CRUD связей                                     form + handles + POST/PATCH/DELETE                      ГОТОВО
-9  Навигация, zoom, pan, minimap, drag & drop      React Flow Controls/Minimap + controlled node state     ГОТОВО
-10 Сохранение layout                               SQLite data_json + повторный GET + template snapshot    ГОТОВО
-
-ИТОГО: 10/10 = 100%.
-
-Предыдущая оценка 6/10 больше не актуальна: четыре недостающих блока редактора реализованы и проверены не визуальной оценкой, а API-интеграционным тестом.
-
-======================================================================
-3. ЧТО СДЕЛАНО СВЕРХ ПЕРВОНАЧАЛЬНОГО ТЗ
-======================================================================
-
-Первоначальный этап требовал перенос HTML-прототипа и сохранение функций графового редактора. Текущий проект вышел далеко за пределы этого объёма. В репозитории фактически присутствуют:
-
-- 20 таблиц SQLite с WAL и foreign keys;
-- 63 зарегистрированных HTTP route handler;
-- 25 backend JavaScript-модулей;
-- 23 frontend TypeScript/TSX-модуля;
-- public read / protected write модель;
-- отдельные private workspace и membership-проверки;
-- независимые доменные графы;
-- Graph Copilot с контекстом выбранных узлов, связей, Work Items и RAG;
-- offline-first fallback для AI;
-- RAG ingest, chunking, токенизация и graph-scoped retrieval;
-- FSM для Task, Defect, ReviewComment, ChangeRequest, KnowledgeDefect, Risk, TechnicalDebt и Improvement;
-- расширяемая Default First ontology;
-- Reviews как отдельные данные графа;
-- templates/snapshots и клонирование структуры;
-- Actor, role bindings и Interest Scope;
-- четыре слоя: Knowledge, Implementation, Project, Resource;
-- ролевые проекции «Руководитель», «Аналитик», «Разработчик», «Инженер ИИ»;
-- автоматическая подсветка связанных узлов и приглушение нерелевантного контекста;
-- отдельная вкладка настроек;
-- русский и английский языки;
-- тёмная, светлая и системная темы;
-- изображения в обзорном разделе;
-- responsive interface и presentation mode;
-- административная консоль;
-- воспроизводимый security/build/integration audit.
-
-Поэтому корректная итоговая формулировка следующая:
-
-ПЕРВЫЙ ЭТАП ВЫПОЛНЕН НА 100%, А ОБЪЁМ ТЕКУЩЕЙ ПЛАТФОРМЫ СУЩЕСТВЕННО ПРЕВЫШАЕТ ПЕРВОНАЧАЛЬНОЕ ТЗ ПЕРВОГО ЭТАПА.
-
-При этом данный отчёт не подменяет отдельный production roadmap: переход к распределённой БД, внешнему rate limiter, полноценной телеметрии и кластерному deploy является самостоятельным следующим этапом, а не незакрытым CRUD-дефектом React Flow.
-
-======================================================================
-4. ВОСПРОИЗВОДИМАЯ ПРОВЕРКА ОДНОЙ КОМАНДОЙ
-======================================================================
-
-Добавлены файлы:
-- scripts/audit.sh
-- AUDIT.md
-
-Команда:
-
-./scripts/audit.sh
-
-Что делает команда:
-
-1. Выполняет npm ci для frontend и backend по lock-файлам.
-2. Выполняет npm audit --audit-level=moderate для обоих dependency trees.
-3. Выполняет frontend TypeScript check.
-4. Выполняет 3 regression-теста автоматического разведения узлов.
-5. Выполняет frontend production build.
-6. Проверяет синтаксис каждого backend/src/*.js.
-7. Проверяет Python syntax для offline AI и smoke.
-8. Создаёт новую временную SQLite-базу.
-9. Запускает backend на временном порту.
-10. Создаёт собственные тестовые workspace/graph/entities.
-11. Выполняет 35 интеграционных проверок.
-12. Удаляет временную БД и завершает тестовый процесс.
-
-Это устраняет прежнюю зависимость от фразы «у меня всё проходит». Заказчик может выполнить ту же команду на своей копии и получить PASS либо точное место ошибки.
-
-======================================================================
-5. ФАКТИЧЕСКИЙ ВЫВОД ФИНАЛЬНОЙ ПРОВЕРКИ
-======================================================================
-
-Команда:
-./scripts/audit.sh
-
-Результат dependency install:
-
-frontend:
-added 48 packages, and audited 49 packages
+```text
+added 48 packages, and audited 49 packages in 1s
 found 0 vulnerabilities
 
-backend:
-added 120 packages, and audited 121 packages
+added 120 packages, and audited 121 packages in 18s
+found 0 vulnerabilities
+```
+
+### 1.2 Backend
+
+Файл: backend/package.json.
+
+```text
+$ npm list --depth=0
+graph-platform-backend@3.1.0
+├── bcryptjs@2.4.3
+├── better-sqlite3@11.10.0
+├── cors@2.8.6
+├── express@4.22.2
+└── jsonwebtoken@9.0.3
+```
+
+Фреймворк: Express 4.22.2.
+Версия приложения: 3.1.0.
+Порт по умолчанию: 3001 (`Number(process.env.PORT || 3001)`).
+Фактический изолированный порт аудита: 31991.
+
+### 1.3 Frontend
+
+Файл: frontend/package.json.
+
+```text
+$ npm list --depth=0
+graph-platform-frontend@3.1.0
+├── @types/react-dom@18.3.7
+├── @types/react@18.3.31
+├── @vitejs/plugin-react@6.0.4
+├── @xyflow/react@12.11.2
+├── react-dom@18.3.1
+├── react@18.3.1
+├── typescript@5.6.3
+├── vite@8.1.5
+└── zustand@5.0.14
+```
+
+Frontend: React 18.3.1 + TypeScript 5.6.3 + React Flow (`@xyflow/react`) 12.11.2.
+Dev-порт Vite по умолчанию: 5173.
+
+### 1.4 База данных
+
+Движок: SQLite.
+Драйвер: better-sqlite3 11.10.0.
+ORM: отсутствует; используются подготовленные SQL-запросы better-sqlite3.
+Режим: WAL.
+Foreign keys: включены.
+Busy timeout: 5000 ms.
+Файл по умолчанию: backend/data/graph.db.
+Изолированный аудит: временный файл SQLite, создаваемый scripts/audit.sh.
+
+Фрагмент backend/src/db/database.js:
+
+```js
+_db = new Database(DB_PATH);
+_db.pragma('journal_mode = WAL');
+_db.pragma('foreign_keys = ON');
+_db.pragma('busy_timeout = 5000');
+```
+
+### 1.5 OpenAPI
+
+✅ OpenAPI-спецификация существует: backend/openapi.yaml.
+✅ Спецификация отдаётся по GET /api/openapi.yaml.
+✅ YAML синтаксически разобран.
+✅ Число документированных операций совпадает с runtime-инвентаризацией.
+
+```text
+$ python3 -c "import yaml; ..."
+version 3.1.0
+paths 85
+operations 121
+
+$ wc -l -c backend/openapi.yaml
+248 21762 backend/openapi.yaml
+
+$ curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:3110/api/openapi.yaml
+HTTP 200
+```
+
+### 1.6 Миграция стека
+
+SQLite → PostgreSQL: ❌ не выполнялась, поскольку PostgreSQL исключён заказчиком из текущего объёма.
+
+Версионированные SQLite-миграции: ✅ выполняются автоматически через `schema_migrations`.
+
+```json
+[
+  {"version":1,"name":"legacy-v3-graph-scoping"},
+  {"version":2,"name":"requirements-completion-sqlite"},
+  {"version":3,"name":"issue-pipe-execution-links"},
+  {"version":4,"name":"execution-object-scoping"},
+  {"version":5,"name":"copilot-question-semantics"},
+  {"version":6,"name":"customer-owner-separation"},
+  {"version":7,"name":"edge-endpoint-foreign-keys"}
+]
+```
+
+Проверка применённой БД:
+
+```json
+{"edgeForeignKeys":["target","source","graph_id","workspace_id"],"foreignKeyCheck":[]}
+```
+
+## 2. База данных / Схема
+
+### 2.1 Фактически применённая схема
+
+Команда выполнялась на изолированной БД после старта backend:
+
+```text
+TABLES=40
+actors
+answers
+change_artifacts
+changes
+chunks
+conversations
+decisions
+documents
+edge_types
+edges
+graphs
+issue_pipes
+issues
+memberships
+node_types
+nodes
+ontology
+pipe_work_items
+pipes
+portfolios
+programs
+projects
+questions
+ratings
+reasoning_steps
+releases
+review_history
+review_scopes
+review_votes
+reviews
+role_bindings
+schema_migrations
+self_host_sources
+sprint_pipes
+sprint_work_items
+sprints
+templates
+users
+work_items
+workspaces
+```
+
+`PRAGMA foreign_key_check`:
+
+```text
+[]
+```
+
+### 2.2 Node
+
+✅ Таблица `nodes` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS nodes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+### 2.3 Edge
+
+✅ Таблица `edges` существует.
+✅ `source` и `target` имеют внешние ключи на `nodes(id)` с `ON DELETE CASCADE`.
+
+```sql
+CREATE TABLE IF NOT EXISTS edges (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  edge_type_id TEXT,
+```
+
+### 2.4 NodeType
+
+✅ Таблица `node_types` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS node_types (
+  id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+```
+
+### 2.5 EdgeType
+
+✅ Таблица `edge_types` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS edge_types (
+  id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+```
+
+### 2.6 Actor
+
+✅ Таблица `actors` существует.
+✅ Тип ограничен значениями Human, AIAgent, Service, ExternalSystem.
+
+```sql
+CREATE TABLE IF NOT EXISTS actors (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK(type IN ('Human','AIAgent','Service','ExternalSystem')),
+```
+
+### 2.7 Workspace
+
+✅ Таблица `workspaces` существует.
+✅ Иерархия workspace поддерживается полем `parent_id` с FK.
+
+```sql
+CREATE TABLE IF NOT EXISTS workspaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'company',
+  parent_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+```
+
+### 2.8 Portfolio
+
+✅ Таблица `portfolios` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS portfolios (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+```
+
+### 2.9 Project
+
+✅ Таблица `projects` существует.
+✅ Проект связан с Portfolio и Program.
+
+```sql
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  portfolio_id TEXT REFERENCES portfolios(id) ON DELETE SET NULL,
+  program_id TEXT REFERENCES programs(id) ON DELETE SET NULL,
+```
+
+### 2.10 Graph
+
+✅ Таблица `graphs` существует.
+✅ Каждый новый граф автоматически получает `project_id`.
+
+```sql
+CREATE TABLE IF NOT EXISTS graphs (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+```
+
+### 2.11 Issue
+
+✅ Таблица `issues` существует.
+✅ Типы: Problem, Risk, Constraint, KnowledgeDefect.
+
+```sql
+CREATE TABLE IF NOT EXISTS issues (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+### 2.12 WorkItem
+
+✅ Таблица `work_items` существует.
+✅ Есть связи с Issue, Change, Pipe, Release.
+✅ Есть часы, специалисты, бюджет, срок, критический путь и риск.
+
+```sql
+CREATE TABLE IF NOT EXISTS work_items (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+Проверенные дополнительные колонки:
+
+```text
+issue_id, change_id, pipe_id, release_id,
+estimated_hours, required_specialists_json, budget,
+deadline, critical_path, risk_level
+```
+
+### 2.13 Review
+
+✅ Таблица `reviews` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS reviews (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  n INTEGER,
+```
+
+### 2.14 ReviewScope
+
+✅ Таблица `review_scopes` существует.
+✅ Scope хранит Project → Artifact → Object → Version.
+
+```sql
+CREATE TABLE IF NOT EXISTS review_scopes (
+  id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+```
+
+Дополнительно существуют `review_history` и `review_votes`.
+
+### 2.15 Sprint
+
+✅ Таблица `sprints` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS sprints (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+### 2.16 Pipe
+
+✅ Таблица `pipes` существует.
+✅ Стадии конфигурируются через `stages_json`.
+
+```sql
+CREATE TABLE IF NOT EXISTS pipes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+### 2.17 Release
+
+✅ Таблица `releases` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS releases (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+```
+
+### 2.18 Conversation
+
+✅ Таблица `conversations` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL,
+```
+
+### 2.19 Question
+
+✅ Таблица `questions` существует.
+✅ Сохраняются intent, actor, role, tab, diagram, стоимость, токены, latency и feedback.
+
+```sql
+CREATE TABLE IF NOT EXISTS questions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE SET NULL,
+  conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+```
+
+### 2.20 Answer
+
+✅ Таблица `answers` существует.
+
+```sql
+CREATE TABLE IF NOT EXISTS answers (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL UNIQUE REFERENCES questions(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+```
+
+Дополнительно существуют `reasoning_steps` и `decisions`.
+
+### 2.21 Итог по сущностям ТЗ
+
+```text
+Таблиц есть / нужно по ТЗ: 19 / 19
+Всего прикладных таблиц в SQLite: 40
+Таблиц из списка ТЗ, присутствующих только в коде, но не в БД: 0
+Отсутствующих таблиц из списка ТЗ: 0
+```
+
+## 3. API
+
+### 3.1 Инвентаризация
+
+Runtime-инвентаризация Express:
+
+```text
+ROUTES=121
+```
+
+OpenAPI:
+
+```text
+paths=85
+operations=121
+```
+
+Итог: 121 / 121 runtime-операций отражены в OpenAPI.
+
+### 3.2 Health / список движков
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:3110/api/health
+```
+
+```text
+{"ok":true,"version":"3.1.0","db":"sqlite","graphs":10,"llmConfigured":false,"llmMode":"offline-first","engines":["Graph","FSM","Review","Ontology","RAG","Visualization","Execution","Hybrid Offline AI","Auth","Workspace","Templates"],"publicDomains":true,"tenantIsolation":"membership + public-read"}
+HTTP 200
+```
+
+### 3.3 Graph Engine
+
+Рабочие маршруты:
+
+```text
+GET    /api/graphs
+POST   /api/graphs
+PATCH  /api/graphs/:id
+DELETE /api/graphs/:id
+POST   /api/graphs/import
+GET    /api/graph/nodes
+POST   /api/graph/nodes
+PATCH  /api/graph/nodes/:id
+DELETE /api/graph/nodes/:id
+GET    /api/graph/edges
+POST   /api/graph/edges
+PATCH  /api/graph/edges/:id
+DELETE /api/graph/edges/:id
+GET    /api/graph/neighbors/:id
+```
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' \
+  'http://127.0.0.1:3110/api/public/domains/dentist-choice/graph?tab=tobe'
+```
+
+```text
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] create node with stored layout
+[OK] edit node and persist drag layout
+[OK] create relation between graph nodes
+[OK] cross-graph relation blocked
+[OK] edit and read relation
+[OK] delete relation
+[OK] delete nodes with relation cleanup
+```
+
+### 3.4 FSM Engine
+
+Рабочие маршруты:
+
+```text
+GET  /api/fsm/machines
+GET  /api/fsm/:id/transitions
+POST /api/fsm/:id/transition
+GET  /api/work-items/:id/transitions
+POST /api/work-items/:id/transition
+```
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' \
+  -H 'X-Api-Key: dev-api-key' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  'http://127.0.0.1:3110/api/fsm/Task/transitions?status=open'
+```
+
+```text
+{"type":"Task","allowed":["START","CANCEL"]}
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] FSM machine and transition
+[OK] Issue to WorkItem hierarchy, metrics and persisted FSM transition
+```
+
+### 3.5 Review Engine
+
+Рабочие маршруты:
+
+```text
+GET    /api/reviews
+POST   /api/reviews
+PATCH  /api/reviews/:id
+DELETE /api/reviews/:id
+POST   /api/reviews/:id/votes
+POST   /api/reviews/:id/transition
+GET    /api/reviews/:id/history
+```
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  http://127.0.0.1:3110/api/reviews
+```
+
+```text
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] seeded reviews have normalized ReviewScope and status
+[OK] ReviewScope, author/executor, voting, approval FSM and immutable history
+```
+
+### 3.6 Ontology Engine
+
+Рабочие маршруты:
+
+```text
+GET  /api/ontology
+POST /api/ontology/extend
+GET  /api/node-types
+POST /api/node-types
+GET  /api/edge-types
+POST /api/edge-types
+```
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  http://127.0.0.1:3110/api/ontology
+```
+
+```text
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] default ontology and graph-scoped extension
+[OK] NodeType and EdgeType are materialized entities
+```
+
+### 3.7 RAG Engine
+
+Рабочие маршруты:
+
+```text
+GET  /api/rag/documents
+POST /api/rag/ingest
+GET  /api/rag/search
+```
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' \
+  -H 'X-Api-Key: dev-api-key' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  'http://127.0.0.1:3110/api/rag/search?q=lineage'
+```
+
+```text
+[{"chunkId":"0da82861-4515-4df8-9ccc-fca7bc0f35d9","documentId":"5c9c0217-b7c7-448f-8caf-f6df16830929","text":"Форма 0409101 — оборотная ведомость. КС — контрольные соотношения. ФЛК — форматно-логический контроль ЦБ. Control Knowledge — контрольные отчёты, КС, DELTA. Экономист отвечает за сдачу. ODS — единый слой. Lineage — путь цифры до операции.","score":1.6,"nodeIds":["rep","ctrl","ods","econ"],"graphId":"592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}]
+HTTP 200
+```
+
+### 3.8 Execution / Issue / Change
+
+Рабочие группы маршрутов:
+
+```text
+/api/issues
+/api/work-items
+/api/changes
+/api/portfolios
+/api/programs
+/api/projects
+/api/sprints
+/api/pipes
+/api/releases
+/api/sprints/:id/pipes
+/api/sprints/:id/work-items
+/api/pipes/:id/work-items
+/api/issues/:id/pipes
+/api/execution-graph
+/api/transformation-metrics
+```
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' \
+  -H 'X-Api-Key: dev-api-key' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  http://127.0.0.1:3110/api/execution-graph
+```
+
+```text
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] Issue to WorkItem hierarchy, metrics and persisted FSM transition
+[OK] Change links SQL/test perspectives and stores executor metrics
+[OK] Portfolio/Program/Project/Pipe/Release graph and independent Sprint-Pipe M:N links
+[OK] Transformation Graph aggregates four-layer resource and financial metrics
+```
+
+### 3.9 Visualization Engine / PI
+
+Backend curl к Visualization Engine не применим: визуализация реализована на frontend.
+
+Файлы:
+
+```text
+frontend/src/components/FlowCanvas.tsx
+frontend/src/graphLayout.ts
+frontend/src/graphFocus.ts
+frontend/src/components/DeliveryControlPanel.tsx
+```
+
+Автотест:
+
+```text
+✔ keeps an already safe layout unchanged
+✔ separates duplicate and too-close coordinates
+✔ recovers from invalid imported coordinates
+tests 3, pass 3, fail 0
+```
+
+### 3.10 Graph Copilot
+
+Рабочие маршруты:
+
+```text
+POST  /api/copilot/chat
+GET   /api/copilot/history
+GET   /api/conversations
+POST  /api/conversations
+GET   /api/conversations/:id
+GET   /api/answers
+PATCH /api/answers/:id/feedback
+GET   /api/conversations/:id/decisions
+POST  /api/conversations/:id/decisions
+```
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Graph-Id: 592b3031-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+  -H 'X-Session-Id: strict-audit' \
+  --data '{"message":"Что такое Lineage?","selectedNodeIds":["core"],"tab":"tobe"}' \
+  http://127.0.0.1:3110/api/copilot/chat
+```
+
+Сокращённый фактический ответ:
+
+```text
+model=graph-copilot-local-v2
+offline=true
+questionId=464c2a19-b1ff-42e7-aa3b-72a1e03d1468
+answerId=8e50cb8a-3793-44fe-985c-5b80ed710446
+conversationId=99353dfe-9460-42ec-b956-71e149b18af8
+sources.nodes=[core,reg,ods,rep,ctrl,dom,proc,ai,stand,valid,migr,aian,self-graph]
+sources.rag=[5c9c0217-b7c7-448f-8caf-f6df16830929]
+usage.latencyMs=9
+HTTP 200
+```
+
+Smoke-факт:
+
+```text
+[OK] Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback
+```
+
+### 3.11 Self-hosting Engine
+
+Рабочие маршруты:
+
+```text
+GET  /api/self-host/status
+GET  /api/self-host/sources
+POST /api/self-host/sync
+```
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:3110/api/self-host/status
+```
+
+```text
+{"running":false,"graphId":"3d5b4a12-4ce8-44f7-b689-d995913ad6ee","root":"/Users/karengevorgyan/Documents/boo/graph-platform","files":71,"changed":71,"lastSyncAt":"2026-07-27T18:34:04.412Z","error":null,"intervalMs":15000,"automatic":false,"sources":71}
+HTTP 200
+```
+
+В production/dev автоматический интервал включён по умолчанию; в изолированном curl-процессе он отключён переменной `SELF_HOST_WATCH=0`. Отдельный тест изменяет отслеживаемый файл и проверяет изменение hash и узла графа.
+
+### 3.12 Отсутствующие API из списка ТЗ
+
+```text
+/api/issues        — существует
+/api/work-items     — существует
+/api/sprints        — существует
+/api/pipes          — существует
+/api/releases       — существует
+/api/conversations  — существует
+/api/answers        — существует
+```
+
+Отсутствующих групп API из списка ТЗ: 0.
+
+## 4. Проверка 16 требований ТЗ
+
+### 4.1 Инкрементальная валидация на внутренних экосистемах
+
+✅ Выполнено.
+
+Создаются проекты и графы:
+
+```json
+["fsm-engine","greenmarket","map","platform-core","taxi","voice"]
+```
+
+Smoke:
+
+```text
+[OK] internal validation ecosystems and self-hosting graph
+```
+
+### 4.2 Self-hosting графа
+
+✅ Выполнено.
+
+`backend/src/services/selfHosting.js` сканирует исходники и документацию, вычисляет SHA-256, создаёт/обновляет узлы категорий Architecture Decisions, Changes & Verification, Components, Documentation и запускает автоматическую синхронизацию каждые 15000 ms.
+
+Тест:
+
+```text
+✔ Self-hosting Engine updates graph nodes when a tracked source changes
+```
+
+### 4.3 Project Knowledge Layer / Change
+
+✅ Выполнено.
+
+Таблицы `changes` и `change_artifacts` связывают изменение с узлами в перспективах:
+
+```text
+form, indicator, sql, test, document, architecture, component
+```
+
+Хранятся executor, deadline, status, risk, estimated_hours, budget, metrics_json.
+
+Smoke:
+
+```text
+[OK] Change links SQL/test perspectives and stores executor metrics
+```
+
+### 4.4 Transformation Graph
+
+✅ Выполнено.
+
+Слои:
+
+```text
+Knowledge, Implementation, Project, Resource
+```
+
+Маршрут `/api/transformation-metrics` агрегирует узлы, часы, бюджет и критический путь.
+
+Smoke:
+
+```text
+[OK] Transformation Graph aggregates four-layer resource and financial metrics
+```
+
+### 4.5 Review как объект первого класса
+
+✅ Выполнено.
+
+Факты:
+
+```text
+reviews
+review_scopes
+review_history
+review_votes
+author_id
+executor_id
+status FSM
+```
+
+Smoke:
+
+```text
+[OK] ReviewScope, author/executor, voting, approval FSM and immutable history
+```
+
+### 4.6 Execution Graph
+
+✅ Выполнено.
+
+Иерархия:
+
+```text
+Workspace → Portfolio → Program → Project → Graph
+Project → Pipe → Release
+```
+
+Независимые M:N-связи:
+
+```text
+sprint_pipes
+sprint_work_items
+pipe_work_items
+```
+
+Smoke:
+
+```text
+[OK] Portfolio/Program/Project/Pipe/Release graph and independent Sprint-Pipe M:N links
+```
+
+### 4.7 Work Item → Issue
+
+✅ Выполнено.
+
+Issue: Problem, Risk, Constraint, KnowledgeDefect.
+WorkItem связан через `issue_id`, имеет собственный FSM и ресурсные показатели.
+
+Smoke:
+
+```text
+[OK] Issue to WorkItem hierarchy, metrics and persisted FSM transition
+```
+
+### 4.8 Pipe как конфигурируемая возможность
+
+✅ Выполнено.
+
+`pipes.stages_json` не фиксирует стадии жёстко. `issue_pipes` связывает Issue с процессом исполнения.
+
+HTTP smoke проверяет создание Pipe со стадиями и связи Issue↔Pipe, Sprint↔Pipe, Pipe↔WorkItem.
+
+### 4.9 Заказчик ≠ Owner
+
+✅ Выполнено.
+
+Роль хранится на Actor↔Object в `role_bindings`.
+SQLite triggers `trg_role_customer_owner_insert` и `trg_role_customer_owner_update` запрещают одному Actor одновременно быть Заказчиком и Owner одного объекта.
+
+Smoke:
+
+```text
+[OK] Customer and Owner separation is enforced; Interest Scope is computed from role bindings
+```
+
+### 4.10 Interest Scope
+
+✅ Выполнено.
+
+`GET /api/interest-scope/:actorId` вычисляет область интересов из WorkItem, role bindings, ReviewScope, Change, Issue и соседних связей графа.
+
+Smoke проверяет попадание связанного узла и `roleBindingIds` в ответ.
+
+### 4.11 Actor вместо Person
+
+✅ Выполнено.
+
+Допустимые типы на уровне БД и API:
+
+```text
+Human | AIAgent | Service | ExternalSystem
+```
+
+Smoke:
+
+```text
+[OK] Actor CRUD supports Human, AIAgent, Service and ExternalSystem model
+```
+
+### 4.12 Default First, Configure Second, Extend Third
+
+✅ Выполнено.
+
+`DEFAULT_PROFILE.principle`:
+
+```text
+Default First → Configure Second → Extend Third
+```
+
+NodeType и EdgeType материализуются в отдельные таблицы; `/api/ontology/extend` расширяет профиль выбранного графа.
+
+### 4.13 Разбивка на движки
+
+✅ Выполнено.
+
+Backend-модули:
+
+```text
+backend/src/engines/graph.js
+backend/src/engines/fsm.js
+backend/src/engines/review.js
+backend/src/engines/ontology.js
+backend/src/engines/rag.js
+```
+
+Visualization:
+
+```text
+frontend/src/components/FlowCanvas.tsx
+frontend/src/graphLayout.ts
+frontend/src/graphFocus.ts
+```
+
+### 4.14 PI как слой над React Flow
+
+✅ Выполнено.
+
+React Flow изолирован в `FlowCanvas.tsx`. Ролевые проекции, фильтрация, подсветка, поиск пути, layout-защита и Delivery Control находятся выше библиотеки визуализации.
+
+### 4.15 Graph Copilot
+
+✅ Выполнено.
+
+Объекты:
+
+```text
+Conversation
+Question
+Answer
+ReasoningStep
+Decision
+```
+
+Question хранит text/message, intent, actor, role, tab, diagram, cost, tokens, latency, feedback.
+Graph Context Builder передаёт узлы, связи, Work Items и RAG chunks.
+
+Smoke:
+
+```text
+[OK] Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback
+```
+
+### 4.16 Workspace-иерархия
+
+✅ Выполнено.
+
+Факты:
+
+```text
+workspaces.parent_id → workspaces.id
+portfolios.workspace_id
+programs.portfolio_id
+projects.program_id / portfolio_id
+graphs.project_id
+```
+
+Новый граф и импортированный JSON-граф автоматически получают Project в Default Program / Default Portfolio, если projectId не передан.
+
+### 4.17 Итог по 16 требованиям
+
+```text
+Функционально выполнено: 16 / 16
+Согласованное исключение: PostgreSQL не реализован; используется SQLite WAL.
+```
+
+## 5. Сборка и тесты
+
+### 5.1 Полная команда
+
+```bash
+sh scripts/audit.sh
+```
+
+### 5.2 Итоговый вывод
+
+```text
+[1/9] Reproducible dependencies
+added 48 packages, and audited 49 packages in 1s
+found 0 vulnerabilities
+added 120 packages, and audited 121 packages in 18s
 found 0 vulnerabilities
 
-Результат отдельного security audit:
-
-[2/8] Dependency security audit
+[2/9] Dependency security audit
 found 0 vulnerabilities
 found 0 vulnerabilities
 
-Результат TypeScript:
-
-[3/8] Frontend TypeScript
-> graph-platform-frontend@3.0.0 check
+[3/9] Frontend TypeScript
+> graph-platform-frontend@3.1.0 check
 > tsc --noEmit
 
-Код завершения: 0.
-
-Результат frontend layout regression:
-
-> graph-platform-frontend@3.0.0 test:layout
+> graph-platform-frontend@3.1.0 test:layout
 > node --test test/graph-layout.test.mjs
+✔ keeps an already safe layout unchanged
+✔ separates duplicate and too-close coordinates
+✔ recovers from invalid imported coordinates
+tests 3
+pass 3
+fail 0
 
-3/3 теста успешно: безопасная раскладка сохраняется, 80 совпадающих узлов разводятся, повреждённые координаты восстанавливаются.
-
-Результат production build:
-
-[4/8] Frontend production build
-> graph-platform-frontend@3.0.0 build
-> vite build
-
+[4/9] Frontend production build
 vite v8.1.5 building client environment for production...
-transforming... ✓ 191 modules transformed.
-dist/index.html                   0.68 kB | gzip:   0.39 kB
-dist/assets/index-D9OSr_cX.css   90.53 kB | gzip:  18.07 kB
-dist/assets/index-Blza-FaO.js   425.43 kB | gzip: 131.88 kB
-✓ built in 110ms
+✓ 192 modules transformed.
+dist/index.html                   0.68 kB │ gzip:   0.39 kB
+dist/assets/index-cxpchSCP.css   94.85 kB │ gzip:  18.75 kB
+dist/assets/index-BCJG9Qmt.js   437.00 kB │ gzip: 134.53 kB
+✓ built in 1.28s
 
-Результат backend syntax:
+[5/9] Backend JavaScript syntax (all source files)
+Checked backend files: 38
 
-[5/8] Backend JavaScript syntax (all source files)
-Checked backend files: 25
+[6/9] SQLite schema and versioned migrations
+✔ SQLite schema and all versioned migrations are applied
+✔ Self-hosting Engine updates graph nodes when a tracked source changes
+tests 2
+pass 2
+fail 0
 
-ИТОГО: 25/25, ошибок синтаксиса нет.
-
-Результат Python syntax:
-
-[6/8] Python syntax
+[7/9] Python syntax
 Checked Python files: 3
 
-ИТОГО: 3/3, ошибок синтаксиса нет.
-
-Результат изолированного интеграционного теста:
-
-[7/8] Isolated backend with a temporary SQLite database
+[8/9] Isolated backend with a temporary SQLite database
 Backend ready on temporary port 31991
 
-[8/8] API integration smoke
+[9/9] API integration smoke
 [OK] health v3
-[OK] public catalog without auth (3 domains)
+[OK] public catalog without auth (10 domains)
+[OK] internal validation ecosystems and self-hosting graph
+[OK] self-hosting repository sync (72 sources)
+[OK] OpenAPI specification is served
 [OK] built-in Dentist Choice graph (22 nodes, 26 relations)
+[OK] seeded reviews have normalized ReviewScope and status
 [OK] guest /graphs exposes public only
 [OK] guest mutation blocked
 [OK] signup
@@ -360,129 +1130,60 @@ Backend ready on temporary port 31991
 [OK] imported member graph remains private to its workspace
 [OK] FSM machine and transition
 [OK] default ontology and graph-scoped extension
+[OK] NodeType and EdgeType are materialized entities
+[OK] Actor CRUD supports Human, AIAgent, Service and ExternalSystem model
+[OK] Customer and Owner separation is enforced; Interest Scope is computed from role bindings
 [OK] RAG ingest and graph-scoped retrieval
-[OK] graph review create and read
+[OK] Issue to WorkItem hierarchy, metrics and persisted FSM transition
+[OK] Change links SQL/test perspectives and stores executor metrics
+[OK] Portfolio/Program/Project/Pipe/Release graph and independent Sprint-Pipe M:N links
+[OK] Transformation Graph aggregates four-layer resource and financial metrics
+[OK] ReviewScope, author/executor, voting, approval FSM and immutable history
 [OK] template snapshot preserves graph and layout
-[OK] Copilot receives selected graph and RAG context
+[OK] Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback
 [OK] delete relation
 [OK] delete nodes with relation cleanup
 [OK] cleanup template
+[OK] cleanup standalone program
 [OK] cleanup imported member graph
 [OK] cleanup own graph
 
 Graph Platform v3 smoke test passed.
 AUDIT RESULT: PASS
+```
 
-ИТОГО: 35/35 сценариев успешно.
+Количество smoke-проверок: 47.
+Ошибок smoke: 0.
 
-======================================================================
-6. ПРОИСХОЖДЕНИЕ РЕПОЗИТОРИЯ: КАК ЗАКРЫТО ПРОТИВОРЕЧИЕ
-======================================================================
+### 5.3 Предупреждение npm
 
-Добавлен PROVENANCE.md.
+При чистой установке npm выдал предупреждение:
 
-Доступный git log содержит:
+```text
+npm warn deprecated prebuild-install@7.1.3: No longer maintained.
+```
 
-8edb8d9 First commit
-510af02 New commit
+Это предупреждение транзитивной зависимости. `npm audit` для backend и frontend вернул `found 0 vulnerabilities`.
 
-Проверяемые факты:
+## 6. Итог без оценочных формулировок
 
-- уже первый доступный commit содержит v3-архитектуру;
-- runtime использует better-sqlite3;
-- backend/src/HoneyOrm.js прямо помечен как ARCHIVED PROTOTYPE и не используется runtime v3;
-- в доступной истории нет commit/tag/remote reference, доказывающих цепочку ранний PostgreSQL/Drizzle → v2.4 → v3.
+```text
+Сущности ТЗ в применённой SQLite БД: 19 / 19
+Функциональные требования ТЗ: 16 / 16
+Runtime API-операции: 121
+Операции в OpenAPI: 121 / 121
+Версионированные миграции: 7 / 7 применены
+Layout tests: 3 / 3 pass
+Backend tests: 2 / 2 pass
+API smoke: 47 / 47 pass
+TypeScript: exit code 0
+Production build: exit code 0
+Backend syntax: 38 / 38 файлов прошли node --check
+Python syntax: 3 / 3 файла прошли py_compile
+Frontend npm audit: 0 vulnerabilities
+Backend npm audit: 0 vulnerabilities
+PostgreSQL: не реализован по согласованному исключению
+Фактическая БД: SQLite WAL
+```
 
-Принятое технически честное решение:
-
-- текущий репозиторий проверяется и сдаётся как самостоятельная версия v3;
-- неподтверждённая связь со старым внешним репозиторием больше не заявляется;
-- для восстановления внешней истории нужен первичный артефакт: архив с .git, commit hash, URL/remote или подписанный export;
-- отсутствие внешнего архива не смешивается с функциональной готовностью текущего кода.
-
-Таким образом, противоречие в отчётности закрыто: вместо трёх несовместимых историй теперь существует одна проверяемая позиция с явно проведённой границей доказательств.
-
-======================================================================
-7. ОСНОВНЫЕ ИЗМЕНЁННЫЕ ФАЙЛЫ
-======================================================================
-
-backend/src/routes/graph.js
-- защищённый CRUD nodes/edges;
-- проверка workspace/graph ownership;
-- layout persistence;
-- duplicate/self/cross-graph validation;
-- транзакционная очистка связей.
-
-backend/src/engines/ontology.js
-- немедленное применение graph-scoped extension.
-
-frontend/src/components/GraphEditorPanel.tsx
-- новая рабочая панель создания/изменения/удаления узлов и связей;
-- создание нового private workspace graph;
-- read-only/auth/edit states.
-
-frontend/src/components/FlowCanvas.tsx
-- controlled node state;
-- сохранённые позиции;
-- onConnect;
-- выбор edge;
-- сохранение координат после drag.
-
-frontend/src/App.tsx
-- API-операции CRUD;
-- optimistic layout update с откатом при ошибке;
-- editor-first экран;
-- отдельное открытие обзорного блока.
-
-frontend/src/index.css
-- responsive стили рабочего редактора для dark/light theme.
-
-frontend/package.json + frontend/package-lock.json
-- Vite 8.1.5;
-- @vitejs/plugin-react 6.0.4;
-- 0 npm audit vulnerabilities.
-
-frontend/src/graphLayout.ts + frontend/test/graph-layout.test.mjs
-- frontend-защита от наложений и восстановление повреждённых координат;
-- 3 regression-теста, включая 80 узлов в одной точке.
-
-test/smoke.py
-- расширение с 11 до 35 интеграционных проверок.
-
-scripts/audit.sh + AUDIT.md
-- независимая полная проверка одной командой.
-
-PROVENANCE.md
-- проверяемые Git-факты и граница доступной истории.
-
-======================================================================
-8. ИТОГОВОЕ ЗАКЛЮЧЕНИЕ
-======================================================================
-
-По результатам выполненных изменений и финального запуска:
-
-- исходный этап React Flow editor: 10/10 = 100%;
-- интеграционный smoke: 35/35 = 100%;
-- backend JavaScript syntax: 25/25 = 100%;
-- Python syntax: 3/3 = 100%;
-- frontend TypeScript: PASS;
-- frontend production build: PASS;
-- frontend npm audit: 0 vulnerabilities;
-- backend npm audit: 0 vulnerabilities;
-- cross-workspace isolation: PASS;
-- node CRUD: PASS;
-- edge CRUD: PASS;
-- layout persistence: PASS;
-- frontend collision protection: 3/3 PASS;
-- ontology immediate extension: PASS;
-- RAG: PASS;
-- Reviews: PASS;
-- templates with layout: PASS;
-- Graph Copilot context: PASS;
-- reproducible third-party audit: ADDED.
-
-Все проверяемые пробелы, перечисленные в последнем разборе, устранены. Главное изменение состоит не в новой формулировке отчёта, а в том, что недостающие функции редактора реализованы в коде и включены в воспроизводимую автоматическую проверку.
-
-Проект теперь не просто соответствует первоначальному ТЗ первого этапа, а заметно превосходит его: вместо одного перенесённого HTML-прототипа получилась полнофункциональная graph platform с рабочим редактором, защищёнными workspace, RAG, Copilot, FSM, ontology, Reviews, templates, ролевыми проекциями, языками, темами и собственным контуром технического аудита.
-
-Отчёт подготовлен по фактическому состоянию текущего репозитория и подтверждён финальным запуском ./scripts/audit.sh от 27.07.2026.
+Конец отчёта.

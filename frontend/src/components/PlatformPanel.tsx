@@ -41,9 +41,10 @@ export default function PlatformPanel({ actors, workItems, engines, layers, onTr
             <span className="badge">{w.status}</span>
             <div style={{ marginTop: 6, fontWeight: 600 }}>{w.title}</div>
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {['START', 'DONE', 'FIX', 'RESOLVE', 'CLOSE', 'ACCEPT'].map(ev => (
+              {(w.allowedTransitions || []).map((ev: string) => (
                 <button key={ev} type="button" className="chip" onClick={() => onTransition?.(w.id, ev)}>{ev}</button>
               ))}
+              {!w.allowedTransitions?.length && <small className="muted">{tr('Финальное состояние', 'Final state')}</small>}
             </div>
           </div>
         ))}

@@ -1,12 +1,14 @@
 {
   "name": "graph-platform-backend",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "db:init": "node src/db/init.js",
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js",
+    "test:migrations": "node --test test/migrations.test.mjs",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

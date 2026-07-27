@@ -279,11 +279,11 @@ export function seedIfEmpty() {
     insertWI.run('wi-law-3', 'ws-default', LAW_PROJECT_ID, LAW_GRAPH_ID, 'Filing', 'Подготовка искового заявления', 'done', 'Knowledge', jstr(['act-paralegal']), jstr(['claims', 'generator']));
 
     // ===== BANK REVIEWS =====
-    insertRev.run('r1', 'ws-default', BANK_GRAPH_ID, 1, jstr({ projectId: 'prj-bank', artifactId: 'stand', version: 'v1' }), 'act-val', 'accepted', 'Центр — платформа знаний', 'Схема перестроена', '16.07');
-    insertRev.run('r2', 'ws-default', BANK_GRAPH_ID, 2, jstr({ projectId: 'prj-bank', artifactId: 'core', version: 'v5' }), 'act-val', 'accepted', 'Проекции по ролям', 'Role switcher', '17.07');
+    insertRev.run('r1', 'ws-default', BANK_GRAPH_ID, 1, jstr({ projectId: 'prj-bank', artifactId: 'stand', version: 'v1' }), 'act-val', 'approved', 'Центр — платформа знаний', 'Схема перестроена', '16.07');
+    insertRev.run('r2', 'ws-default', BANK_GRAPH_ID, 2, jstr({ projectId: 'prj-bank', artifactId: 'core', version: 'v5' }), 'act-val', 'approved', 'Проекции по ролям', 'Role switcher', '17.07');
 
     // ===== LAW REVIEWS =====
-    insertRev.run('r-law-1', 'ws-default', LAW_GRAPH_ID, 1, jstr({ projectId: LAW_PROJECT_ID, artifactId: 'strategy', version: 'v1' }), 'act-lawyer', 'accepted', 'Стратегия защиты', 'План утверждён', '20.07');
+    insertRev.run('r-law-1', 'ws-default', LAW_GRAPH_ID, 1, jstr({ projectId: LAW_PROJECT_ID, artifactId: 'strategy', version: 'v1' }), 'act-lawyer', 'approved', 'Стратегия защиты', 'План утверждён', '20.07');
     insertRev.run('r-law-2', 'ws-default', LAW_GRAPH_ID, 2, jstr({ projectId: LAW_PROJECT_ID, artifactId: 'claims', version: 'v2' }), 'act-partner', 'pending', 'Уточнить требования', null, '21.07');
 
     // ===== ROLE BINDINGS =====
