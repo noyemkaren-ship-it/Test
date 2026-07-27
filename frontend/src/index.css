@@ -159,7 +159,9 @@ select.field, input.field, textarea.field {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
-  min-width: 150px;
+  box-sizing: border-box;
+  width: 210px;
+  min-width: 210px;
   max-width: 210px;
   box-shadow: 0 2px 8px rgba(0,0,0,.2);
   cursor: pointer;
@@ -178,6 +180,10 @@ select.field, input.field, textarea.field {
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 3px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .gp-title {
   font-size: 13px;
@@ -185,11 +191,19 @@ select.field, input.field, textarea.field {
   color: var(--ink);
   line-height: 1.25;
   margin-bottom: 3px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 .gp-desc {
   font-size: 11.5px;
   color: var(--muted);
   line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
 }
 .gp-badge {
   display: inline-block;
@@ -209,7 +223,9 @@ select.field, input.field, textarea.field {
   background: var(--core-bg);
   border: none;
   text-align: center;
-  max-width: 260px;
+  width: 250px;
+  min-width: 250px;
+  max-width: 250px;
   padding: 14px 16px;
   box-shadow: 0 0 24px rgba(21,58,94,.55);
 }
@@ -1073,8 +1089,8 @@ footer.main-foot {
   .bnav-label { font-size: 9px; }
   .has-bottom-nav { padding-bottom: 64px; }
   .react-flow__edge-text { font-size: 10px !important; }
-  .gp-node { min-width: 130px; max-width: 180px; padding: 8px 10px; }
-  .gp-core { max-width: 220px; padding: 10px 12px; }
+  .gp-node { width: 180px; min-width: 180px; max-width: 180px; padding: 8px 10px; }
+  .gp-core { width: 220px; min-width: 220px; max-width: 220px; padding: 10px 12px; }
 }
 
 @media (max-width: 380px) {

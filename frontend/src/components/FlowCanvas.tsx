@@ -14,6 +14,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { expandFocus, getPersonaFocus } from '../graphFocus'
+import { fallbackGraphPosition, separateGraphNodes } from '../graphLayout'
 
 const LAYOUT: Record<string, Record<string, { x: number; y: number }>> = {
   asis: {
@@ -124,17 +125,26 @@ function GraphInner({
 
   const rfNodes = useMemo(() => {
     const layout = LAYOUT[tab] || {}
+    const desiredPositions = nodes.map((n: any, i: number) => {
+      const stored = n.data?.position
+      const hasStoredPosition = Number.isFinite(Number(stored?.x)) && Number.isFinite(Number(stored?.y))
+      return {
+        id: n.id,
+        position: hasStoredPosition
+          ? { x: Number(stored.x), y: Number(stored.y) }
+          : (layout[n.id] || fallbackGraphPosition(i))
+      }
+    })
+    const safePositions = separateGraphNodes(desiredPositions)
 
     return nodes.map((n: any, i: number) => {
       let highlight = ''
       if (focus.size > 0) highlight = focus.has(n.id) ? (n.id === pinned ? 'root' : 'hl') : 'dim'
-      const stored = n.data?.position
-      const hasStoredPosition = Number.isFinite(Number(stored?.x)) && Number.isFinite(Number(stored?.y))
-      const pos = hasStoredPosition ? { x: Number(stored.x), y: Number(stored.y) } : (layout[n.id] || { x: 40 + (i % 4) * 230, y: 40 + Math.floor(i / 4) * 130 })
+      const pos = safePositions.get(n.id) || fallbackGraphPosition(i)
       return {
         id: n.id,
         type: (n.nodeKind && (nodeTypes as any)[n.nodeKind]) ? n.nodeKind : 'default',
-        position: { x: pos.x, y: pos.y },
+        position: pos,
         data: {
           label: n.label,
           kind: n.kind,

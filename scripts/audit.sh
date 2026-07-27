@@ -34,6 +34,7 @@ printf '%s\n' '[2/8] Dependency security audit'
 
 printf '%s\n' '[3/8] Frontend TypeScript'
 (cd "$AUDIT_ROOT/frontend" && npm run check)
+(cd "$AUDIT_ROOT/frontend" && npm run test:layout)
 
 printf '%s\n' '[4/8] Frontend production build'
 (cd "$AUDIT_ROOT/frontend" && npm run build)

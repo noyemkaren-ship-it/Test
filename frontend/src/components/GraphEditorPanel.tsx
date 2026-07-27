@@ -134,7 +134,7 @@ export default function GraphEditorPanel(props: Props) {
   return (
     <div className="editor-panel">
       <div className="editor-panel-head">
-        <div><span className="editor-status live">EDIT MODE</span><strong>{props.activeGraph?.name}</strong><small>{tr('Перетащите узел — позиция сохранится. Соедините точки — связь создастся.', 'Drag a node to save its position. Connect handles to create a relation.')}</small></div>
+        <div><span className="editor-status live">EDIT MODE</span><strong>{props.activeGraph?.name}</strong><small>{tr('Перетащите узел — позиция сохранится. Автораскладка не допускает наложений.', 'Drag a node to save its position. Auto-layout prevents overlaps.')}</small></div>
         <div className="editor-actions">
           <button type="button" className={mode === 'node' && !props.selectedNode ? 'chip on' : 'chip'} onClick={startNode}>＋ {tr('Узел', 'Node')}</button>
           <button type="button" className={mode === 'edge' && !props.selectedEdge ? 'chip on' : 'chip'} onClick={startEdge} disabled={props.nodes.length < 2}>↗ {tr('Связь', 'Relation')}</button>

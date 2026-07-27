@@ -12,7 +12,7 @@ GRAPH PLATFORM v3
 1. Все проверяемые пробелы, указанные в последнем разборе, устранены в коде.
 2. Исходный первый этап «HTML-прототип → React + TypeScript + React Flow с сохранением функций редактора» доведён с 6/10 до 10/10 требований, то есть до 100% по зафиксированному чек-листу этапа.
 3. В рабочую панель добавлен полный CRUD узлов и связей: создание, просмотр, изменение и удаление.
-4. Drag & drop теперь не является временным визуальным действием: координаты сохраняются в SQLite и восстанавливаются при повторном запросе.
+4. Drag & drop теперь не является временным визуальным действием: координаты сохраняются в SQLite и восстанавливаются при повторном запросе. Frontend дополнительно проверяет координаты и автоматически разводит пересекающиеся узлы с безопасным шагом 340×280 px.
 5. Редактор снова является главным экраном продукта. Презентационный обзор не мешает работе и открывается отдельно кнопкой «О платформе».
 6. Создан независимый сценарий аудита одной командой. Он устанавливает зависимости по lock-файлам, проверяет их безопасность, собирает frontend и выполняет интеграционные проверки на новой временной БД.
 7. Итог автоматической проверки: 35/35 API-сценариев успешно, 25/25 backend JS-файлов успешно, 3/3 Python-файла успешно, TypeScript — код 0, production build — успешно, npm audit frontend/backend — 0 уязвимостей.
@@ -205,7 +205,7 @@ API:
 - 20 таблиц SQLite с WAL и foreign keys;
 - 63 зарегистрированных HTTP route handler;
 - 25 backend JavaScript-модулей;
-- 22 frontend TypeScript/TSX-модуля;
+- 23 frontend TypeScript/TSX-модуля;
 - public read / protected write модель;
 - отдельные private workspace и membership-проверки;
 - независимые доменные графы;
@@ -251,14 +251,15 @@ API:
 1. Выполняет npm ci для frontend и backend по lock-файлам.
 2. Выполняет npm audit --audit-level=moderate для обоих dependency trees.
 3. Выполняет frontend TypeScript check.
-4. Выполняет frontend production build.
-5. Проверяет синтаксис каждого backend/src/*.js.
-6. Проверяет Python syntax для offline AI и smoke.
-7. Создаёт новую временную SQLite-базу.
-8. Запускает backend на временном порту.
-9. Создаёт собственные тестовые workspace/graph/entities.
-10. Выполняет 29 интеграционных проверок.
-11. Удаляет временную БД и завершает тестовый процесс.
+4. Выполняет 3 regression-теста автоматического разведения узлов.
+5. Выполняет frontend production build.
+6. Проверяет синтаксис каждого backend/src/*.js.
+7. Проверяет Python syntax для offline AI и smoke.
+8. Создаёт новую временную SQLite-базу.
+9. Запускает backend на временном порту.
+10. Создаёт собственные тестовые workspace/graph/entities.
+11. Выполняет 35 интеграционных проверок.
+12. Удаляет временную БД и завершает тестовый процесс.
 
 Это устраняет прежнюю зависимость от фразы «у меня всё проходит». Заказчик может выполнить ту же команду на своей копии и получить PASS либо точное место ошибки.
 
@@ -293,6 +294,13 @@ found 0 vulnerabilities
 
 Код завершения: 0.
 
+Результат frontend layout regression:
+
+> graph-platform-frontend@3.0.0 test:layout
+> node --test test/graph-layout.test.mjs
+
+3/3 теста успешно: безопасная раскладка сохраняется, 80 совпадающих узлов разводятся, повреждённые координаты восстанавливаются.
+
 Результат production build:
 
 [4/8] Frontend production build
@@ -300,11 +308,11 @@ found 0 vulnerabilities
 > vite build
 
 vite v8.1.5 building client environment for production...
-transforming... ✓ 190 modules transformed.
+transforming... ✓ 191 modules transformed.
 dist/index.html                   0.68 kB | gzip:   0.39 kB
-dist/assets/index-DYWBsYTU.css   90.18 kB | gzip:  18.00 kB
-dist/assets/index-BDCXqoqY.js   423.90 kB | gzip: 131.25 kB
-✓ built in 95ms
+dist/assets/index-D9OSr_cX.css   90.53 kB | gzip:  18.07 kB
+dist/assets/index-Blza-FaO.js   425.43 kB | gzip: 131.88 kB
+✓ built in 110ms
 
 Результат backend syntax:
 
@@ -434,8 +442,12 @@ frontend/package.json + frontend/package-lock.json
 - @vitejs/plugin-react 6.0.4;
 - 0 npm audit vulnerabilities.
 
+frontend/src/graphLayout.ts + frontend/test/graph-layout.test.mjs
+- frontend-защита от наложений и восстановление повреждённых координат;
+- 3 regression-теста, включая 80 узлов в одной точке.
+
 test/smoke.py
-- расширение с 11 до 36 интеграционных проверок.
+- расширение с 11 до 35 интеграционных проверок.
 
 scripts/audit.sh + AUDIT.md
 - независимая полная проверка одной командой.
@@ -461,6 +473,7 @@ PROVENANCE.md
 - node CRUD: PASS;
 - edge CRUD: PASS;
 - layout persistence: PASS;
+- frontend collision protection: 3/3 PASS;
 - ontology immediate extension: PASS;
 - RAG: PASS;
 - Reviews: PASS;

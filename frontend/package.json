@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test:layout": "node --test test/graph-layout.test.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",

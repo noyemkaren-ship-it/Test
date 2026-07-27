@@ -15,6 +15,7 @@ Graph Platform — self-hosted knowledge operating system: независимы�
 - **Workspace Library** — проекты, Actor↔Project bindings, snapshots/templates и независимое клонирование проекта.
 - **Default First ontology** — новый граф сразу получает рабочий профиль, который можно расширять.
 - **Full graph editor** — создание, изменение и удаление узлов/связей прямо в React Flow; drag layout сохраняется в SQLite.
+- **Collision-safe layout** — frontend автоматически разводит пересекающиеся узлы, восстанавливает повреждённые координаты и сохраняет безопасный базовый интервал 340×280 px.
 - **Member JSON import** — обычный зарегистрированный пользователь загружает Knowledge Package прямо из рабочей панели; новый граф создаётся приватным в его workspace и проходит структурную/контентную проверку.
 - **Dentist Choice domain** — встроенный публичный граф «Выбор стоматолога» с 22 узлами, 26 связями и официальными источниками по лицензии и информированному согласию.
 
@@ -22,7 +23,7 @@ Graph Platform — self-hosted knowledge operating system: независимы�
 
 ## Быстрый старт
 
-Требования: Node.js 20+ (рекомендуется 22), npm, Python 3.10+.
+Требования: Node.js 22.6+ (рекомендуется 24), npm, Python 3.10+.
 
 ```bash
 # 1) Backend
