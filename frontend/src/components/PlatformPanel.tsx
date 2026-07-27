@@ -8,8 +8,8 @@ export default function PlatformPanel({ actors, workItems, engines, layers, onTr
         <h3>{tr('Движки', 'Engines')}</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {(engines || []).map((e: any) => (
-            <span key={e.id} className={`badge ${e.status === 'active' ? 'ok' : 'warn'}`}>
-              {e.title}: {e.status}
+            <span key={typeof e === 'string' ? e : (e.id || e.title)} className={`badge ${typeof e === 'string' || e.status === 'active' ? 'ok' : 'warn'}`}>
+              {typeof e === 'string' ? e : `${e.title}: ${e.status}`}
             </span>
           ))}
         </div>
@@ -18,9 +18,9 @@ export default function PlatformPanel({ actors, workItems, engines, layers, onTr
         <h3>{tr('Слои Transformation Graph', 'Transformation Graph layers')}</h3>
         <div className="grid-2">
           {(layers || []).map((l: any) => (
-            <div key={l.id} className="card">
-              <strong>{l.title}</strong>
-              <p>{l.desc}</p>
+            <div key={typeof l === 'string' ? l : (l.id || l.title)} className="card">
+              <strong>{typeof l === 'string' ? l : l.title}</strong>
+              {typeof l !== 'string' && <p>{l.desc}</p>}
             </div>
           ))}
         </div>

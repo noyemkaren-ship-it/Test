@@ -15,6 +15,8 @@ Graph Platform — self-hosted knowledge operating system: независимы�
 - **Workspace Library** — проекты, Actor↔Project bindings, snapshots/templates и независимое клонирование проекта.
 - **Default First ontology** — новый граф сразу получает рабочий профиль, который можно расширять.
 - **Full graph editor** — создание, изменение и удаление узлов/связей прямо в React Flow; drag layout сохраняется в SQLite.
+- **Member JSON import** — обычный зарегистрированный пользователь загружает Knowledge Package прямо из рабочей панели; новый граф создаётся приватным в его workspace и проходит структурную/контентную проверку.
+- **Dentist Choice domain** — встроенный публичный граф «Выбор стоматолога» с 22 узлами, 26 связями и официальными источниками по лицензии и информированному согласию.
 
 Подробная архитектура, API, security model, deploy и форматы данных описаны в `info.pdf`.
 
@@ -143,7 +145,9 @@ curl -X POST http://127.0.0.1:5005/chat \
 
 ## Knowledge Package
 
-Admin Console умеет импортировать пакет без заранее созданного graph ID — backend создаст домен сам. Коллизии `node.id`/`edge.id` с другими графами remap-ятся, а endpoints не разрешают создавать cross-domain edge.
+Обычный зарегистрированный пользователь нажимает **«Загрузить JSON»** в верхней части рабочей панели. Никакой дополнительный ключ не нужен. Импорт всегда создаёт новый `private`-граф в его собственном workspace, проверяет структуру, размер, ссылки edges, опасные конструкции и нецензурное содержимое.
+
+Admin Console сохраняет расширенный режим import/merge/replace. Коллизии `node.id`/`edge.id` с другими графами remap-ятся, а endpoints не разрешают создавать cross-domain edge.
 
 Минимальный пакет:
 

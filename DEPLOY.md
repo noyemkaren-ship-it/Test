@@ -21,6 +21,7 @@ OFFLINE_AI_URL=http://127.0.0.1:5005
 CORS_ORIGINS=https://example.com
 TRUST_PROXY=1
 SQLITE_PATH=/var/lib/graph-platform/graph.db
+# Optional: require this key in addition to login for member JSON imports.
 ```
 
 `ADMIN_INITIAL_PASSWORD` нужен только если база пустая и создаётся initial admin. Не храните production `.env` в Git.

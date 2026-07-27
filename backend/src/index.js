@@ -6,7 +6,7 @@ import {
   getDb, validateSecrets, wsId, graphId,
   validateWorkspaceAccess, validateGraphAccess, jparse, jstr
 } from './utils/helper.js';
-import { seedIfEmpty } from './db/seed.js';
+import { ensureDentistChoiceGraph, seedIfEmpty } from './db/seed.js';
 import { authOptional, authRequired } from './middleware/auth.js';
 import { securityHeaders, rateLimit } from './middleware/security.js';
 import { listMachines, getAllowedTransitions, transition, clearMachinesCache } from './engines/fsm.js';
@@ -45,6 +45,7 @@ app.use(authOptional);
 const db = getDb();
 const seeded = seedIfEmpty();
 if (seeded) console.log('SQLite seeded');
+ensureDentistChoiceGraph();
 
 app.get('/api/health', (_req, res) => {
   const key = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;

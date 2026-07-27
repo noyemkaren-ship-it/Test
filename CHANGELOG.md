@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0 member import update - 2026-07-27
+
+- Added member-facing JSON upload directly to the main graph workspace.
+- Member imports always create a new private graph in the authenticated workspace.
+- Added keyless JSON import for every registered user, hourly rate limiting, structural validation and content moderation.
+- Added built-in public «Выбор стоматолога» domain with 22 nodes and 26 relations.
+- Added upload preview, drag-and-drop and responsive import dialog.
+- Expanded isolated smoke coverage to 36 passing scenarios.
+
 ## 3.0.0 - 2026-07
 
 - Redesigned main dashboard, graph control center, auth UX and Admin Console.

@@ -3,8 +3,20 @@ import { randomUUID } from 'crypto';
 import { authRequired } from '../middleware/auth.js';
 import { getDb, wsId, validateWorkspaceAccess, slugify } from '../utils/helper.js';
 import { DEFAULT_PROFILE } from '../engines/ontology.js';
+import { createRateLimiter } from '../middleware/security.js';
+import {
+  IMPORT_LIMITS,
+  KnowledgePackageError,
+  importPrivateKnowledgePackage
+} from '../services/knowledgePackage.js';
 
 const router = Router();
+const importLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyFn: req => `graph-import:${req.user?.sub || req.user?.id || req.ip}`,
+  message: 'Import limit reached. Try again later.'
+});
 
 function serializeGraph(g) {
   return {
@@ -55,6 +67,33 @@ router.get('/graphs', (req, res) => {
   } catch (e) {
     console.error('GET /graphs error:', e.message);
     res.status(500).json({ error: 'Failed to fetch graphs' });
+  }
+});
+
+router.get('/graphs/import-policy', authRequired, (req, res) => {
+  const wid = wsId(req);
+  if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
+  res.json({
+    enabled: true,
+    visibility: 'private',
+    maxNodes: IMPORT_LIMITS.maxNodes,
+    maxEdges: IMPORT_LIMITS.maxEdges,
+    moderation: true
+  });
+});
+
+router.post('/graphs/import', authRequired, importLimiter, (req, res) => {
+  try {
+    const db = getDb();
+    const wid = wsId(req);
+    if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
+    const rawPackage = req.body?.package ?? req.body;
+    const result = importPrivateKnowledgePackage(db, wid, rawPackage, { sourceFileName: req.body?.sourceFileName });
+    res.status(201).json(result);
+  } catch (e) {
+    const status = e instanceof KnowledgePackageError ? e.status : 400;
+    console.error('Member graph import error:', e.message);
+    res.status(status).json({ error: e.message || 'Failed to import graph' });
   }
 });
 

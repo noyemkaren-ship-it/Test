@@ -34,7 +34,8 @@ export default function LibraryPanel({
   async function loadProjectActors() {
     if (!projectId) return
     const res = await fetch(apiUrl(`/api/projects/${projectId}/actors`), { headers: headers() })
-    setProjectActors(await res.json())
+    const data = await res.json().catch(() => [])
+    setProjectActors(res.ok && Array.isArray(data) ? data : [])
   }
 
   async function loadCandidates() {
@@ -43,12 +44,14 @@ export default function LibraryPanel({
       apiUrl(`/api/workspaces/${workspaceId}/actors?unassigned_to=${encodeURIComponent(projectId)}`),
       { headers: headers() }
     )
-    setCandidates(await res.json())
+    const data = await res.json().catch(() => [])
+    setCandidates(res.ok && Array.isArray(data) ? data : [])
   }
 
   async function loadTemplates() {
     const res = await fetch(apiUrl(`/api/workspaces/${workspaceId}/templates`), { headers: headers() })
-    setTemplates(await res.json())
+    const data = await res.json().catch(() => [])
+    setTemplates(res.ok && Array.isArray(data) ? data : [])
   }
 
   useEffect(() => {

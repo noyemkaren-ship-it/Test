@@ -1,6 +1,6 @@
 GRAPH PLATFORM v3
 ИТОГОВЫЙ ТЕХНИЧЕСКИЙ ОТЧЁТ ПО УСТРАНЕНИЮ ЗАМЕЧАНИЙ
-Дата проверки: 25.07.2026
+Дата проверки: 27.07.2026
 Формат: требование → изменение → команда → фактический результат
 
 Уважаемый Валерий!
@@ -15,7 +15,7 @@ GRAPH PLATFORM v3
 4. Drag & drop теперь не является временным визуальным действием: координаты сохраняются в SQLite и восстанавливаются при повторном запросе.
 5. Редактор снова является главным экраном продукта. Презентационный обзор не мешает работе и открывается отдельно кнопкой «О платформе».
 6. Создан независимый сценарий аудита одной командой. Он устанавливает зависимости по lock-файлам, проверяет их безопасность, собирает frontend и выполняет интеграционные проверки на новой временной БД.
-7. Итог автоматической проверки: 29/29 API-сценариев успешно, 24/24 backend JS-файла успешно, 3/3 Python-файла успешно, TypeScript — код 0, production build — успешно, npm audit frontend/backend — 0 уязвимостей.
+7. Итог автоматической проверки: 35/35 API-сценариев успешно, 25/25 backend JS-файлов успешно, 3/3 Python-файла успешно, TypeScript — код 0, production build — успешно, npm audit frontend/backend — 0 уязвимостей.
 8. В процессе проверки найден и дополнительно исправлен дефект применения расширений онтологии: раньше новый тип становился активным только после перезагрузки, теперь применяется в том же запросе.
 9. Противоречие по происхождению репозитория больше не замалчивается и не подменяется предположением. Текущая версия зафиксирована как самостоятельно проверяемый v3-репозиторий; доступные и отсутствующие Git-доказательства описаны в PROVENANCE.md.
 10. По факту реализовано существенно больше первоначального ТЗ первого этапа: кроме редактора, в проекте уже есть workspace isolation, public/private графы, RAG, Graph Copilot, FSM, расширяемая онтология, Reviews, templates, ролевые проекции, мультиязычность, темы и отдельные настройки.
@@ -146,6 +146,36 @@ API:
 
 Статус: ИСПРАВЛЕНО И ДОБАВЛЕНО В ОБЯЗАТЕЛЬНЫЙ АУДИТ.
 
+1.10. Импорт JSON для обычного зарегистрированного аккаунта
+
+Было:
+- кнопка импорта существовала только внутри Admin Console;
+- пользователь с ролью member не мог найти или выполнить загрузку.
+
+Стало:
+- заметная кнопка «Загрузить JSON» находится над основным графом;
+- файл можно выбрать, перетащить или вставить вручную;
+- до импорта показывается название и количество узлов/связей;
+- новый граф всегда создаётся private в workspace текущего пользователя;
+- импорт не может перезаписать существующий или чужой граф;
+- проверяются структура, размер, ссылки edges, опасные конструкции и нецензурное содержимое;
+- дополнительный ключ не требуется: импорт доступен любому зарегистрированному пользователю;
+- расширенный merge/replace остаётся только у администратора.
+
+Статус: ИСПРАВЛЕНО И ПРОВЕРЕНО ОБЫЧНЫМ MEMBER-АККАУНТОМ.
+
+1.11. Новый публичный граф «Выбор стоматолога»
+
+Добавлено:
+- 22 узла и 26 связей;
+- проверка лицензии, квалификации, плана, рисков, стоимости и информированного согласия;
+- сохранённый layout;
+- официальные источники Росздравнадзора и Минздрава;
+- дисклеймер, что граф не заменяет медицинскую консультацию;
+- автоматическая установка графа и в новую, и в уже существующую v3-базу.
+
+Статус: ЗАГРУЖЕНО И ДОСТУПНО В PUBLIC CATALOG.
+
 ======================================================================
 2. ИСХОДНОЕ ТЗ ПЕРВОГО ЭТАПА: 10 ИЗ 10
 ======================================================================
@@ -173,9 +203,9 @@ API:
 Первоначальный этап требовал перенос HTML-прототипа и сохранение функций графового редактора. Текущий проект вышел далеко за пределы этого объёма. В репозитории фактически присутствуют:
 
 - 20 таблиц SQLite с WAL и foreign keys;
-- 61 зарегистрированный HTTP route handler;
-- 24 backend JavaScript-модуля;
-- 21 frontend TypeScript/TSX-модуль;
+- 63 зарегистрированных HTTP route handler;
+- 25 backend JavaScript-модулей;
+- 22 frontend TypeScript/TSX-модуля;
 - public read / protected write модель;
 - отдельные private workspace и membership-проверки;
 - независимые доменные графы;
@@ -270,18 +300,18 @@ found 0 vulnerabilities
 > vite build
 
 vite v8.1.5 building client environment for production...
-transforming... ✓ 189 modules transformed.
+transforming... ✓ 190 modules transformed.
 dist/index.html                   0.68 kB | gzip:   0.39 kB
-dist/assets/index-Dcvfr4yx.css   86.01 kB | gzip:  17.26 kB
-dist/assets/index-apmtVx2i.js   417.30 kB | gzip: 129.55 kB
-✓ built in 344ms
+dist/assets/index-DYWBsYTU.css   90.18 kB | gzip:  18.00 kB
+dist/assets/index-BDCXqoqY.js   423.90 kB | gzip: 131.25 kB
+✓ built in 95ms
 
 Результат backend syntax:
 
 [5/8] Backend JavaScript syntax (all source files)
-Checked backend files: 24
+Checked backend files: 25
 
-ИТОГО: 24/24, ошибок синтаксиса нет.
+ИТОГО: 25/25, ошибок синтаксиса нет.
 
 Результат Python syntax:
 
@@ -297,7 +327,8 @@ Backend ready on temporary port 31991
 
 [8/8] API integration smoke
 [OK] health v3
-[OK] public catalog without auth (2 domains)
+[OK] public catalog without auth (3 domains)
+[OK] built-in Dentist Choice graph (22 nodes, 26 relations)
 [OK] guest /graphs exposes public only
 [OK] guest mutation blocked
 [OK] signup
@@ -306,6 +337,10 @@ Backend ready on temporary port 31991
 [OK] authenticated user still sees public catalog
 [OK] create private domain in own workspace
 [OK] read own graph
+[OK] member JSON import policy
+[OK] ordinary account imports private JSON graph with layout
+[OK] JSON profanity moderation blocks package
+[OK] JSON structural validation blocks missing relation target
 [OK] guest node mutation blocked
 [OK] create node with stored layout
 [OK] edit node and persist drag layout
@@ -314,6 +349,7 @@ Backend ready on temporary port 31991
 [OK] cross-graph relation blocked
 [OK] edit and read relation
 [OK] cross-workspace private graph isolation
+[OK] imported member graph remains private to its workspace
 [OK] FSM machine and transition
 [OK] default ontology and graph-scoped extension
 [OK] RAG ingest and graph-scoped retrieval
@@ -323,12 +359,13 @@ Backend ready on temporary port 31991
 [OK] delete relation
 [OK] delete nodes with relation cleanup
 [OK] cleanup template
+[OK] cleanup imported member graph
 [OK] cleanup own graph
 
 Graph Platform v3 smoke test passed.
 AUDIT RESULT: PASS
 
-ИТОГО: 29/29 сценариев успешно.
+ИТОГО: 35/35 сценариев успешно.
 
 ======================================================================
 6. ПРОИСХОЖДЕНИЕ РЕПОЗИТОРИЯ: КАК ЗАКРЫТО ПРОТИВОРЕЧИЕ
@@ -398,7 +435,7 @@ frontend/package.json + frontend/package-lock.json
 - 0 npm audit vulnerabilities.
 
 test/smoke.py
-- расширение с 11 до 29 интеграционных проверок.
+- расширение с 11 до 36 интеграционных проверок.
 
 scripts/audit.sh + AUDIT.md
 - независимая полная проверка одной командой.
@@ -413,8 +450,8 @@ PROVENANCE.md
 По результатам выполненных изменений и финального запуска:
 
 - исходный этап React Flow editor: 10/10 = 100%;
-- интеграционный smoke: 29/29 = 100%;
-- backend JavaScript syntax: 24/24 = 100%;
+- интеграционный smoke: 35/35 = 100%;
+- backend JavaScript syntax: 25/25 = 100%;
 - Python syntax: 3/3 = 100%;
 - frontend TypeScript: PASS;
 - frontend production build: PASS;
@@ -435,4 +472,4 @@ PROVENANCE.md
 
 Проект теперь не просто соответствует первоначальному ТЗ первого этапа, а заметно превосходит его: вместо одного перенесённого HTML-прототипа получилась полнофункциональная graph platform с рабочим редактором, защищёнными workspace, RAG, Copilot, FSM, ontology, Reviews, templates, ролевыми проекциями, языками, темами и собственным контуром технического аудита.
 
-Отчёт подготовлен по фактическому состоянию текущего репозитория и подтверждён финальным запуском ./scripts/audit.sh от 25.07.2026.
+Отчёт подготовлен по фактическому состоянию текущего репозитория и подтверждён финальным запуском ./scripts/audit.sh от 27.07.2026.

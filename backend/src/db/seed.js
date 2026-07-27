@@ -2,6 +2,12 @@ import { getDb, jstr } from './database.js';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { DEFAULT_PROFILE } from '../engines/ontology.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { normalizeKnowledgePackage } from '../services/knowledgePackage.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function tokenize(text) {
   return (text || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -331,5 +337,47 @@ export function seedIfEmpty() {
 
   tx();
   console.log('✅ Seed complete: Bank + Law domains ready');
+  return true;
+}
+
+export function ensureDentistChoiceGraph() {
+  const db = getDb();
+  if (!db.prepare("SELECT 1 FROM workspaces WHERE id = 'ws-default'").get()) return false;
+  if (db.prepare("SELECT 1 FROM graphs WHERE slug = 'dentist-choice'").get()) return false;
+
+  const source = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/dentist-choice.knowledge-package.json'), 'utf8'));
+  const pkg = normalizeKnowledgePackage(source);
+  let graphId = 'd3e7a150-18dd-4a2c-9df1-0d1e8a4c2026';
+  if (db.prepare('SELECT 1 FROM graphs WHERE id = ?').get(graphId)) graphId = randomUUID();
+  const nodeMap = new Map(pkg.nodes.map(node => [
+    node.sourceId,
+    db.prepare('SELECT 1 FROM nodes WHERE id = ?').get(node.sourceId) ? randomUUID() : node.sourceId
+  ]));
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO graphs (id, workspace_id, name, slug, description, visibility, settings_json)
+      VALUES (?, 'ws-default', ?, 'dentist-choice', ?, 'public', ?)
+    `).run(graphId, pkg.name, pkg.description, jstr({ builtIn: true, source: 'dentist-choice.knowledge-package.json' }));
+    db.prepare('INSERT OR REPLACE INTO ontology (workspace_id, graph_id, profile_json) VALUES (?, ?, ?)')
+      .run('ws-default', graphId, jstr(pkg.ontology));
+
+    const insertNode = db.prepare(`
+      INSERT INTO nodes (id, workspace_id, project_id, graph_id, tab, label, kind, layer, node_kind, description, badge, data_json)
+      VALUES (?, 'ws-default', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const node of pkg.nodes) {
+      insertNode.run(nodeMap.get(node.sourceId), graphId, node.tab, node.label, node.kind, node.layer, node.nodeKind, node.description, node.badge, jstr(node.data));
+    }
+
+    const insertEdge = db.prepare(`
+      INSERT INTO edges (id, workspace_id, graph_id, tab, source, target, label)
+      VALUES (?, 'ws-default', ?, ?, ?, ?, ?)
+    `);
+    for (const edge of pkg.edges) {
+      insertEdge.run(randomUUID(), graphId, edge.tab, nodeMap.get(edge.source), nodeMap.get(edge.target), edge.label);
+    }
+  });
+  transaction();
+  console.log('✅ Built-in domain ready: Выбор стоматолога');
   return true;
 }

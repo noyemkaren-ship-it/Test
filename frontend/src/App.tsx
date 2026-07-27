@@ -2,6 +2,7 @@ import { apiUrl } from './config'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FlowCanvas from './components/FlowCanvas'
 import GraphEditorPanel from './components/GraphEditorPanel'
+import KnowledgeImportDialog from './components/KnowledgeImportDialog'
 import ChatSidePanel from './components/ChatSidePanel'
 import Glossary from './components/Glossary'
 import PlatformPanel from './components/PlatformPanel'
@@ -57,6 +58,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [present, setPresent] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [toast, setToast] = useState('')
   const [graphKey, setGraphKey] = useState(0)
   const [graphLoading, setGraphLoading] = useState(false)
@@ -100,6 +102,7 @@ export default function App() {
     if (token) h.Authorization = `Bearer ${token}`
     return h
   }, [token, workspaceId, activeGraphId, sessionId])
+  const closeImport = useCallback(() => setImportOpen(false), [])
 
   function showToast(text: string) {
     setToast(text)
@@ -194,6 +197,16 @@ export default function App() {
     setGraphs(current => [editable, ...current.filter(graph => graph.id !== editable.id)])
     setActiveGraphId(editable.id)
     showToast(tr('Рабочий граф создан', 'Workspace graph created'))
+  }
+
+  function finishImport(result: any) {
+    const importedGraph = { ...result.graph, canEdit: true }
+    setGraphs(current => [importedGraph, ...current.filter(graph => graph.id !== importedGraph.id)])
+    setActiveGraphId(importedGraph.id)
+    setTab('tobe')
+    setLayer('all')
+    setImportOpen(false)
+    showToast(tr(`Граф загружен: ${result.nodes} узлов · ${result.edges} связей`, `Graph uploaded: ${result.nodes} nodes · ${result.edges} relations`))
   }
 
   async function createNode(input: any) {
@@ -515,6 +528,7 @@ export default function App() {
               </div>
               <div className="stage-actions">
 	                {graphLoading && <span className="loading-pill">{tr('Синхронизация…', 'Syncing…')}</span>}
+	                {!present && <button type="button" className="btn-primary compact import-graph-button" onClick={() => token ? setImportOpen(true) : go('login')}>⇧ {tr('Загрузить JSON', 'Upload JSON')}</button>}
 	                {!present && <button type="button" className={`btn-quiet ${showOverview ? 'active' : ''}`} onClick={() => setShowOverview(value => !value)}>{showOverview ? tr('Скрыть обзор', 'Hide overview') : tr('О платформе', 'About')}</button>}
 	                <button type="button" className="btn-quiet" onClick={() => setPresent(!present)}>{present ? tr('Выйти', 'Exit') : tr('Презентация', 'Present')}</button>
 	              </div>
@@ -669,6 +683,7 @@ export default function App() {
       </main>
 
       {toast && <div className="toast premium-toast">{toast}</div>}
+      <KnowledgeImportDialog open={importOpen} headers={headers} onClose={closeImport} onImported={finishImport} />
       {!present && <BottomNav page="app" isAdmin={user?.role === 'admin'} isLoggedIn={!!token} onNavigate={go} />}
     </div>
   )

@@ -76,6 +76,7 @@ done
 printf 'Backend ready on temporary port %s\n' "$AUDIT_PORT"
 
 printf '%s\n' '[8/8] API integration smoke'
-GP_BASE_URL="http://127.0.0.1:$AUDIT_PORT" python3 "$AUDIT_ROOT/test/smoke.py"
+GP_BASE_URL="http://127.0.0.1:$AUDIT_PORT" \
+python3 "$AUDIT_ROOT/test/smoke.py"
 
 printf '%s\n' 'AUDIT RESULT: PASS'
