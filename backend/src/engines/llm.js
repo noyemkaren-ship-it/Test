@@ -6,7 +6,12 @@
 const OFFLINE_URL = (process.env.OFFLINE_AI_URL || 'http://127.0.0.1:5005').replace(/\/$/, '');
 const OFFLINE_KEY = process.env.OFFLINE_AI_KEY || 'offline-dev-key';
 
+function offlineEnabled() {
+  return process.env.OFFLINE_AI_ENABLED === '1';
+}
+
 export async function callOfflineAI({ message, contextText = '', sessionId = 'default', history = [] }) {
+  if (!offlineEnabled()) return { text: null, model: 'offline-disabled', usedExternal: false, fallback: false, reason: 'Offline AI is disabled by configuration' };
   try {
     const res = await fetch(`${OFFLINE_URL}/chat`, {
       method: 'POST',
@@ -45,14 +50,28 @@ export async function callOfflineRNN(message) {
 }
 
 export async function callLLM({ system, user, contextText, sessionId = 'default', history = [] }) {
+  const mode = String(process.env.AI_EXECUTION_MODE || 'hybrid').toLowerCase();
   const key = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
   const base = (process.env.OPENAI_BASE_URL || process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
   const model = process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-  if (!key) {
+  if (mode === 'local') {
+    return { text: null, model: 'graph-local', usedExternal: false, fallback: false, reason: 'Local graph/RAG response selected' };
+  }
+
+  if (mode === 'offline') {
     const offline = await callOfflineAI({ message: user, contextText, sessionId, history });
     if (offline.text) return offline;
-    return { text: null, model: 'local-kb', usedExternal: false, fallback: true, reason: offline.reason || 'Offline AI unavailable' };
+    return { text: null, model: 'graph-local', usedExternal: false, fallback: true, reason: offline.reason || 'Offline AI unavailable' };
+  }
+
+  if (!key) {
+    if (mode === 'hybrid' && offlineEnabled()) {
+      const offline = await callOfflineAI({ message: user, contextText, sessionId, history });
+      if (offline.text) return offline;
+      return { text: null, model: 'graph-local', usedExternal: false, fallback: true, reason: offline.reason || 'Offline AI unavailable' };
+    }
+    return { text: null, model: 'graph-local', usedExternal: false, fallback: false, reason: 'External AI is not configured; graph/RAG local response selected' };
   }
 
   const payload = {
@@ -81,7 +100,7 @@ export async function callLLM({ system, user, contextText, sessionId = 'default'
     }
     if (!res.ok) {
       const err = await res.text();
-      const offline = await callOfflineAI({ message: user, contextText, sessionId, history });
+      const offline = mode === 'hybrid' ? await callOfflineAI({ message: user, contextText, sessionId, history }) : { text: null };
       if (offline.text) {
         offline.reason = `External LLM HTTP ${res.status}; switched to offline AI`;
         return offline;
@@ -98,7 +117,7 @@ export async function callLLM({ system, user, contextText, sessionId = 'default'
       confidence: null
     };
   } catch (e) {
-    const offline = await callOfflineAI({ message: user, contextText, sessionId, history });
+    const offline = mode === 'hybrid' ? await callOfflineAI({ message: user, contextText, sessionId, history }) : { text: null };
     if (offline.text) {
       offline.reason = `External LLM unavailable (${e.message || e}); switched to offline AI`;
       return offline;

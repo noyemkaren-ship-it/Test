@@ -11,12 +11,16 @@ test('SQLite schema and all versioned migrations are applied', async () => {
   const db = getDb();
   try {
     const versions = db.prepare('SELECT version,name FROM schema_migrations ORDER BY version').all();
-    assert.deepEqual(versions.map(row => row.version), [1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual(versions.map(row => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     const requiredTables = [
       'nodes', 'edges', 'node_types', 'edge_types', 'actors', 'workspaces', 'portfolios', 'programs',
       'projects', 'graphs', 'issues', 'work_items', 'changes', 'reviews', 'review_scopes', 'review_history',
       'review_votes', 'sprints', 'pipes', 'releases', 'conversations', 'questions', 'answers',
-      'reasoning_steps', 'decisions', 'self_host_sources'
+      'reasoning_steps', 'decisions', 'self_host_sources',
+      'epics', 'features', 'artifacts', 'artifact_versions', 'fragments',
+      'transformation_sets', 'transformation_graphs', 'transformation_graph_nodes', 'transformation_alignments',
+      'workspace_resources', 'project_resource_links', 'project_node_links',
+      'rbac_roles', 'rbac_permissions', 'rbac_role_permissions', 'rbac_assignments', 'object_acl', 'security_audit_log'
     ];
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
     for (const table of requiredTables) assert.ok(tables.has(table), `${table} must exist`);
@@ -28,6 +32,16 @@ test('SQLite schema and all versioned migrations are applied', async () => {
     for (const column of ['conversation_id', 'intent', 'actor_id', 'role', 'tab', 'diagram', 'cost', 'total_tokens', 'latency_ms', 'feedback']) {
       assert.ok(questionColumns.has(column), `questions.${column} must exist`);
     }
+    const reviewScopeColumns = new Set(db.prepare('PRAGMA table_info(review_scopes)').all().map(row => row.name));
+    for (const column of ['project_id', 'epic_id', 'feature_id', 'artifact_id', 'version_id', 'fragment_id']) {
+      assert.ok(reviewScopeColumns.has(column), `review_scopes.${column} must exist`);
+    }
+    const layers = ['Knowledge', 'Implementation', 'Project', 'Resource'];
+    db.prepare("INSERT INTO workspaces (id,name,type) VALUES ('ws-test','Test','studio')").run();
+    db.prepare("INSERT INTO projects (id,workspace_id,name) VALUES ('prj-test','ws-test','Test')").run();
+    db.prepare("INSERT INTO transformation_sets (id,workspace_id,project_id,name) VALUES ('set-test','ws-test','prj-test','Test')").run();
+    for (const layer of layers) db.prepare('INSERT INTO transformation_graphs (id,set_id,workspace_id,project_id,layer,name) VALUES (?,?,?,?,?,?)').run(`tg-${layer}`, 'set-test', 'ws-test', 'prj-test', layer, layer);
+    assert.equal(db.prepare('SELECT COUNT(*) count FROM transformation_graphs WHERE set_id=?').get('set-test').count, 4);
     const edgeForeignKeys = new Set(db.prepare('PRAGMA foreign_key_list(edges)').all().map(row => row.from));
     assert.ok(edgeForeignKeys.has('source') && edgeForeignKeys.has('target'));
     assert.deepEqual(db.pragma('foreign_key_check'), []);

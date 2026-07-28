@@ -3,11 +3,12 @@ import { randomUUID } from 'crypto';
 import { authRequired } from '../middleware/auth.js';
 import { getDb, jstr, jparse, wsId, validateWorkspaceAccess } from '../utils/helper.js';
 import { DEFAULT_PROFILE } from '../engines/ontology.js';
+import { hasPermission } from '../services/authorization.js';
 
 const router = Router();
 
-function requireWorkspace(req, res, target = wsId(req)) {
-  if (!validateWorkspaceAccess(req, target)) {
+function requireWorkspace(req, res, target = wsId(req), permission = 'workspace.read') {
+  if (!validateWorkspaceAccess(req, target) || !hasPermission(req, target, permission)) {
     res.status(403).json({ error: 'Access denied' });
     return false;
   }
@@ -137,7 +138,7 @@ router.get('/templates/:id', authRequired, (req, res) => {
 router.post('/workspaces/:wsId/templates', authRequired, (req, res) => {
   const db = getDb();
   const wid = req.params.wsId;
-  if (!requireWorkspace(req, res, wid)) return;
+  if (!requireWorkspace(req, res, wid, 'project.write')) return;
 
   const name = String(req.body?.name || '').trim().slice(0, 160);
   const description = String(req.body?.description || '').trim().slice(0, 1200);
@@ -191,7 +192,7 @@ router.delete('/templates/:id', authRequired, (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT workspace_id FROM templates WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Template not found' });
-  if (!requireWorkspace(req, res, row.workspace_id)) return;
+  if (!requireWorkspace(req, res, row.workspace_id, 'project.manage')) return;
   db.prepare('DELETE FROM templates WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -199,7 +200,7 @@ router.delete('/templates/:id', authRequired, (req, res) => {
 router.post('/projects', authRequired, (req, res) => {
   const db = getDb();
   const wid = wsId(req);
-  if (!requireWorkspace(req, res, wid)) return;
+  if (!requireWorkspace(req, res, wid, 'project.write')) return;
   const name = String(req.body?.name || '').trim().slice(0, 160);
   const templateId = req.body?.templateId ? String(req.body.templateId) : null;
   const portfolioId = req.body?.portfolioId ? String(req.body.portfolioId) : null;

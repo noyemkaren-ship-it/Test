@@ -207,4 +207,4 @@ info.pdf        полный технический и продуктовый п
 
 ## Версия
 
-`3.1.0` — complete SQLite requirements model, Review/Execution engines, Issue/Change workflows, persistent Copilot conversations, self-hosting graph and operational UI.
+`3.2.0` — complete SQLite requirements model, six-level Review Scope, four coordinated Transformation Graphs, reusable Workspace entities, hierarchical RBAC/object ACL, explicit optional Offline AI, persistent Copilot and operational UI.

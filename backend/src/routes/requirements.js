@@ -454,7 +454,14 @@ router.get('/transformation-metrics', (req, res) => {
   const layers = scope.db.prepare(`SELECT COALESCE(layer,'Unassigned') layer, COUNT(*) nodes FROM nodes WHERE workspace_id=?${filter} GROUP BY layer`).all(...params);
   const work = scope.db.prepare(`SELECT COUNT(*) items, COALESCE(SUM(estimated_hours),0) estimatedHours, COALESCE(SUM(budget),0) budget, COALESCE(SUM(critical_path),0) criticalPathItems FROM work_items WHERE workspace_id=?${filter}`).get(...params);
   const changes = scope.db.prepare(`SELECT COUNT(*) changes, COALESCE(SUM(estimated_hours),0) estimatedHours, COALESCE(SUM(budget),0) budget FROM changes WHERE workspace_id=?${filter}`).get(...params);
-  res.json({ layers, resources: work, changes });
+  const transformationSets = scope.db.prepare(`SELECT ts.id,ts.project_id AS projectId,ts.name,
+    COUNT(DISTINCT tg.id) independentGraphs,COUNT(DISTINCT ta.id) alignments
+    FROM transformation_sets ts
+    LEFT JOIN transformation_graphs tg ON tg.set_id=ts.id
+    LEFT JOIN transformation_alignments ta ON ta.set_id=ts.id
+    WHERE ts.workspace_id=? GROUP BY ts.id ORDER BY ts.created_at DESC`).all(scope.wid)
+    .map(row => ({ ...row, complete: row.independentGraphs === 4 }));
+  res.json({ layers, resources: work, changes, transformationSets, architecture: 'four-independent-coordinated-graphs' });
 });
 
 export default router;

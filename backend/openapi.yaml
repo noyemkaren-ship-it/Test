@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Graph Platform API
-  version: 3.1.0
+  version: 3.2.0
   description: API Graph Platform with Graph, FSM, Review, Ontology, RAG, Execution and Copilot engines.
 servers:
   - url: http://localhost:3001/api
@@ -222,6 +222,54 @@ paths:
     post: { operationId: adminCreateEdge, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
   /admin/edges/{id}:
     delete: { operationId: adminDeleteEdge, parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /review-hierarchy:
+    get: { operationId: reviewHierarchy, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /epics:
+    post: { operationId: createEpic, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /features:
+    post: { operationId: createFeature, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /artifacts:
+    post: { operationId: createArtifact, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /artifact-versions:
+    post: { operationId: createArtifactVersion, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /fragments:
+    post: { operationId: createFragment, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /transformation-sets:
+    get: { operationId: listTransformationSets, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { operationId: createTransformationSet, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /transformation-sets/{id}:
+    get: { operationId: getTransformationSet, parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /transformation-graphs/{id}/nodes:
+    post: { operationId: addTransformationGraphNode, parameters: [{ $ref: '#/components/parameters/Id' }], requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /transformation-sets/{id}/alignments:
+    post: { operationId: createTransformationAlignment, parameters: [{ $ref: '#/components/parameters/Id' }], requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspace-resources:
+    get: { operationId: listWorkspaceResources, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { operationId: createWorkspaceResource, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspace-resources/{id}/projects/{projectId}:
+    post: { operationId: linkWorkspaceResource, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /projects/{projectId}/shared-nodes/{nodeId}:
+    post: { operationId: linkSharedNode, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /projects/{projectId}/shared-resources:
+    get: { operationId: projectSharedResources, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /rbac/permissions:
+    get: { operationId: listRbacPermissions, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /rbac/roles:
+    get: { operationId: listRbacRoles, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /rbac/assignments:
+    post: { operationId: createRbacAssignment, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /rbac/memberships:
+    post: { operationId: upsertRbacMembership, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /rbac/acl:
+    post: { operationId: createObjectAcl, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /rbac/acl/{id}:
+    delete: { operationId: deleteObjectAcl, parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /rbac/effective:
+    get: { operationId: effectiveRbacPermissions, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /rbac/audit-log:
+    get: { operationId: securityAuditLog, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /ai/capabilities:
+    get: { operationId: aiCapabilities, security: [], responses: { '200': { $ref: '#/components/responses/Success' } } }
 components:
   securitySchemes:
     bearerAuth:

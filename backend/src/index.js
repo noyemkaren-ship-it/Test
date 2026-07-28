@@ -25,11 +25,13 @@ import requirementsRoutes from './routes/requirements.js';
 import reviewsRoutes from './routes/reviews.js';
 import selfHostingRoutes from './routes/selfHosting.js';
 import openapiRoutes from './routes/openapi.js';
+import architectureRoutes from './routes/architecture.js';
 import { ensureAllGraphHierarchy } from './services/hierarchy.js';
 import { materializeAllOntologyTypes, materializeOntologyTypes } from './services/ontologyTypes.js';
 import { startSelfHosting } from './services/selfHosting.js';
 import { ensureInternalValidationProjects } from './services/internalValidation.js';
 import { ensureReviewMetadata } from './services/reviewMetadata.js';
+import { ensureWorkspaceRbac } from './services/authorization.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -57,6 +59,7 @@ if (seeded) console.log('SQLite seeded');
 ensureDentistChoiceGraph();
 ensureInternalValidationProjects(db);
 ensureReviewMetadata(db);
+for (const { id } of db.prepare('SELECT id FROM workspaces').all()) ensureWorkspaceRbac(db, id);
 ensureAllGraphHierarchy(db);
 materializeAllOntologyTypes(db);
 startSelfHosting(db);
@@ -66,12 +69,14 @@ app.get('/api/health', (_req, res) => {
   const graphs = db.prepare('SELECT COUNT(*) AS c FROM graphs').get()?.c || 0;
   res.json({
     ok: true,
-    version: '3.1.0',
+    version: '3.2.0',
     db: 'sqlite',
     graphs,
     llmConfigured: !!key,
-    llmMode: key ? 'hybrid-external-first' : 'offline-first',
-    engines: ['Graph', 'FSM', 'Review', 'Ontology', 'RAG', 'Visualization', 'Execution', 'Hybrid Offline AI', 'Auth', 'Workspace', 'Templates'],
+    llmMode: process.env.AI_EXECUTION_MODE || 'hybrid',
+    offlineAiOptional: true,
+    offlineAiEnabled: process.env.OFFLINE_AI_ENABLED === '1',
+    engines: ['Graph', 'FSM', 'Review', 'Ontology', 'RAG', 'Visualization', 'Execution', 'Transformation Coordination', 'RBAC/ACL', 'Optional Offline AI', 'Auth', 'Workspace', 'Templates'],
     publicDomains: true,
     tenantIsolation: 'membership + public-read'
   });
@@ -84,6 +89,7 @@ app.use('/api', requirementsRoutes);
 app.use('/api', reviewsRoutes);
 app.use('/api', selfHostingRoutes);
 app.use('/api', openapiRoutes);
+app.use('/api', architectureRoutes);
 
 // FSM. Guest reads require an explicitly selected public graph; members may use workspace scope.
 function fsmScope(req) {
@@ -225,7 +231,7 @@ app.use((err, _req, res, _next) => {
 });
 
 if (process.env.NODE_ENV !== 'test' || process.env.START_SERVER_IN_TEST === '1') {
-  app.listen(PORT, '0.0.0.0', () => console.log(`Graph Platform v3.1 http://localhost:${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => console.log(`Graph Platform v3.2 http://localhost:${PORT}`));
 }
 
 export default app;

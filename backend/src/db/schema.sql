@@ -209,9 +209,66 @@ CREATE TABLE IF NOT EXISTS review_scopes (
   review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
-  artifact_id TEXT,
+  epic_id TEXT REFERENCES epics(id) ON DELETE SET NULL,
+  feature_id TEXT REFERENCES features(id) ON DELETE SET NULL,
+  artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+  version_id TEXT REFERENCES artifact_versions(id) ON DELETE SET NULL,
+  fragment_id TEXT REFERENCES fragments(id) ON DELETE SET NULL,
   object_id TEXT,
   version TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Full review hierarchy required by the domain model.
+CREATE TABLE IF NOT EXISTS epics (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS features (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  epic_id TEXT NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+  graph_id TEXT REFERENCES graphs(id) ON DELETE CASCADE,
+  node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'document',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artifact_versions (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  version TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(artifact_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS fragments (
+  id TEXT PRIMARY KEY,
+  artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(id) ON DELETE CASCADE,
+  node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+  label TEXT NOT NULL,
+  selector_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -451,6 +508,135 @@ CREATE TABLE IF NOT EXISTS templates (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- A transformation set always owns four independent, coordinated graphs.
+CREATE TABLE IF NOT EXISTS transformation_sets (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS transformation_graphs (
+  id TEXT PRIMARY KEY,
+  set_id TEXT NOT NULL REFERENCES transformation_sets(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  layer TEXT NOT NULL CHECK(layer IN ('Knowledge','Implementation','Project','Resource')),
+  name TEXT NOT NULL,
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(set_id, layer)
+);
+
+CREATE TABLE IF NOT EXISTS transformation_graph_nodes (
+  transformation_graph_id TEXT NOT NULL REFERENCES transformation_graphs(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  PRIMARY KEY (transformation_graph_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS transformation_alignments (
+  id TEXT PRIMARY KEY,
+  set_id TEXT NOT NULL REFERENCES transformation_sets(id) ON DELETE CASCADE,
+  source_graph_id TEXT NOT NULL REFERENCES transformation_graphs(id) ON DELETE CASCADE,
+  source_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  target_graph_id TEXT NOT NULL REFERENCES transformation_graphs(id) ON DELETE CASCADE,
+  target_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL DEFAULT 'traces-to',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK(source_graph_id <> target_graph_id),
+  UNIQUE(set_id, source_graph_id, source_node_id, target_graph_id, target_node_id, relation)
+);
+
+-- Workspace resources and graph nodes can be reused by many projects.
+CREATE TABLE IF NOT EXISTS workspace_resources (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  source_graph_id TEXT REFERENCES graphs(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_resource_links (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  resource_id TEXT NOT NULL REFERENCES workspace_resources(id) ON DELETE CASCADE,
+  usage_role TEXT NOT NULL DEFAULT 'shared',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (project_id, resource_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_node_links (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  usage_role TEXT NOT NULL DEFAULT 'reference',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (project_id, node_id)
+);
+
+-- Hierarchical RBAC. Explicit object deny has priority over every inherited allow.
+CREATE TABLE IF NOT EXISTS rbac_roles (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  parent_role_id TEXT REFERENCES rbac_roles(id) ON DELETE SET NULL,
+  is_system INTEGER NOT NULL DEFAULT 0 CHECK(is_system IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workspace_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS rbac_permissions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS rbac_role_permissions (
+  role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+  permission_id TEXT NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
+  effect TEXT NOT NULL DEFAULT 'allow' CHECK(effect IN ('allow','deny')),
+  PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE TABLE IF NOT EXISTS rbac_assignments (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+  scope_type TEXT NOT NULL CHECK(scope_type IN ('workspace','project','graph','object')),
+  scope_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workspace_id, user_id, role_id, scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS object_acl (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  object_type TEXT NOT NULL,
+  object_id TEXT NOT NULL,
+  subject_type TEXT NOT NULL CHECK(subject_type IN ('user','role')),
+  subject_id TEXT NOT NULL,
+  permission TEXT NOT NULL,
+  effect TEXT NOT NULL CHECK(effect IN ('allow','deny')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workspace_id, object_type, object_id, subject_type, subject_id, permission)
+);
+
+CREATE TABLE IF NOT EXISTS security_audit_log (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  actor_user_id TEXT,
+  action TEXT NOT NULL,
+  object_type TEXT,
+  object_id TEXT,
+  decision TEXT NOT NULL CHECK(decision IN ('allow','deny')),
+  details_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TRIGGER IF NOT EXISTS trg_role_customer_owner_insert
 BEFORE INSERT ON role_bindings
 WHEN NEW.role IN ('Owner','Заказчик','Customer') AND EXISTS (
@@ -497,3 +683,8 @@ CREATE INDEX IF NOT EXISTS idx_questions_session ON questions(session_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_ws_graph ON conversations(workspace_id, graph_id);
 CREATE INDEX IF NOT EXISTS idx_answers_conversation ON answers(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_self_host_graph ON self_host_sources(graph_id);
+CREATE INDEX IF NOT EXISTS idx_transformation_sets_project ON transformation_sets(workspace_id,project_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_resources_ws ON workspace_resources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_rbac_assignments_user ON rbac_assignments(workspace_id,user_id,scope_type,scope_id);
+CREATE INDEX IF NOT EXISTS idx_object_acl_object ON object_acl(workspace_id,object_type,object_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_ws ON security_audit_log(workspace_id,created_at);

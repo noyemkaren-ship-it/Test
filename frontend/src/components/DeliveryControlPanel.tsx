@@ -21,7 +21,7 @@ export default function DeliveryControlPanel({ headers, graph, nodes, canEdit }:
   const [work, setWork] = useState({ title: '', issueId: '', estimatedHours: '8', budget: '0', deadline: '', criticalPath: false })
   const [change, setChange] = useState({ title: '', nodeId: '', perspective: 'component', estimatedHours: '8', budget: '0', deadline: '' })
   const [execution, setExecution] = useState({ kind: 'sprints', name: '', start: '', end: '', targetDate: '' })
-  const [review, setReview] = useState({ text: '', objectId: '', version: 'v1' })
+  const [review, setReview] = useState({ text: '', objectId: '', epic: 'Delivery', feature: 'Acceptance', artifact: 'Graph artifact', version: 'v1', fragment: 'Acceptance fragment' })
 
   const load = useCallback(async () => {
     if (!graph?.id) return
@@ -100,9 +100,17 @@ export default function DeliveryControlPanel({ headers, graph, nodes, canEdit }:
   async function createReview(event: FormEvent) {
     event.preventDefault()
     if (!review.text.trim()) return
+    const epic = await request('/epics', { projectId: graph.projectId, graphId: graph.id, name: review.epic })
+    const feature = await request('/features', { epicId: epic.id, graphId: graph.id, name: review.feature })
+    const artifact = await request('/artifacts', { featureId: feature.id, graphId: graph.id, nodeId: review.objectId || null, name: review.artifact })
+    const version = await request('/artifact-versions', { artifactId: artifact.id, version: review.version })
+    const fragment = await request('/fragments', { versionId: version.id, nodeId: review.objectId || null, label: review.fragment })
     await request('/reviews', {
       text: review.text,
-      scope: { projectId: graph.projectId, artifactId: review.objectId || null, objectId: review.objectId || null, version: review.version }
+      scope: {
+        projectId: graph.projectId, epicId: epic.id, featureId: feature.id, artifactId: artifact.id,
+        versionId: version.id, fragmentId: fragment.id, objectId: review.objectId || null, version: review.version
+      }
     })
     setReview(value => ({ ...value, text: '' }))
   }
@@ -170,16 +178,21 @@ export default function DeliveryControlPanel({ headers, graph, nodes, canEdit }:
             <button className="btn-primary compact" disabled={busy}>＋ {execution.kind.slice(0, -1)}</button>
           </form>
           <div className="delivery-columns"><div><h4>Sprints</h4>{data.sprints.map((item: any) => <span key={item.id}>{item.name} <small>{item.status}</small></span>)}</div><div><h4>Pipes</h4>{data.pipes.map((item: any) => <span key={item.id}>{item.name} <small>{item.stages?.length || 0} stages</small></span>)}</div><div><h4>Releases</h4>{data.releases.map((item: any) => <span key={item.id}>{item.name} <small>{item.target_date || item.status}</small></span>)}</div></div>
+          <div className="delivery-list">{data.metrics?.transformationSets?.map((set: any) => <article key={set.id}><span className={`delivery-type ${set.complete ? 'approved' : 'high'}`}>4× GRAPH</span><strong>{set.name}</strong><small>{set.independentGraphs}/4 independent · {set.alignments} alignments</small></article>)}</div>
         </>}
 
         {tab === 'reviews' && <>
           <form className="delivery-form" onSubmit={createReview}>
             <input className="field grow" value={review.text} onChange={e => setReview({ ...review, text: e.target.value })} placeholder={tr('Что нужно проверить?', 'What needs review?')} />
+            <input className="field" value={review.epic} onChange={e => setReview({ ...review, epic: e.target.value })} placeholder="Epic" />
+            <input className="field" value={review.feature} onChange={e => setReview({ ...review, feature: e.target.value })} placeholder="Feature" />
             <select className="field" value={review.objectId} onChange={e => setReview({ ...review, objectId: e.target.value })}>{nodes.map(node => <option key={node.id} value={node.id}>{node.label}</option>)}</select>
+            <input className="field" value={review.artifact} onChange={e => setReview({ ...review, artifact: e.target.value })} placeholder="Artifact" />
             <input className="field mini" value={review.version} onChange={e => setReview({ ...review, version: e.target.value })} />
+            <input className="field" value={review.fragment} onChange={e => setReview({ ...review, fragment: e.target.value })} placeholder="Fragment" />
             <button className="btn-primary compact" disabled={busy}>＋ Review</button>
           </form>
-          <div className="delivery-list">{data.reviews.map((item: any) => <article key={item.id}><span className={`delivery-type ${item.status}`}>REVIEW</span><strong>{item.text}</strong><small>{item.status} · {item.scopes?.map((s: any) => s.version).filter(Boolean).join(', ') || 'scope'}</small><div className="delivery-row-actions"><button type="button" onClick={() => request(`/reviews/${item.id}/votes`, { vote: 'approve' })}>✓ {tr('Голос', 'Vote')}</button>{item.status === 'open' && <button type="button" onClick={() => request(`/reviews/${item.id}/transition`, { event: 'start' })}>{tr('Начать', 'Start')}</button>}{item.status === 'in_review' && <button type="button" onClick={() => request(`/reviews/${item.id}/transition`, { event: 'approve' })}>{tr('Утвердить', 'Approve')}</button>}</div></article>)}</div>
+          <div className="delivery-list">{data.reviews.map((item: any) => <article key={item.id}><span className={`delivery-type ${item.status}`}>REVIEW</span><strong>{item.text}</strong><small>{item.status} · {item.scopes?.some((s: any) => s.fragmentId) ? 'Project → Epic → Feature → Artifact → Version → Fragment' : item.scopes?.map((s: any) => s.version).filter(Boolean).join(', ') || 'legacy scope'}</small><div className="delivery-row-actions"><button type="button" onClick={() => request(`/reviews/${item.id}/votes`, { vote: 'approve' })}>✓ {tr('Голос', 'Vote')}</button>{item.status === 'open' && <button type="button" onClick={() => request(`/reviews/${item.id}/transition`, { event: 'start' })}>{tr('Начать', 'Start')}</button>}{item.status === 'in_review' && <button type="button" onClick={() => request(`/reviews/${item.id}/transition`, { event: 'approve' })}>{tr('Утвердить', 'Approve')}</button>}</div></article>)}</div>
         </>}
         {error && <p className="editor-error delivery-error">{error}</p>}
       </div>

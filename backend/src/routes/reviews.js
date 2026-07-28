@@ -3,22 +3,27 @@ import { randomUUID } from 'crypto';
 import { authRequired } from '../middleware/auth.js';
 import { getDb, wsId, graphId, validateWorkspaceAccess, validateGraphAccess, jparse, jstr } from '../utils/helper.js';
 import { transitionReview } from '../engines/review.js';
+import { hasPermission } from '../services/authorization.js';
 
 const router = Router();
 
-function scope(req, res, write = false) {
+function scope(req, res, write = false, permission = write ? 'review.write' : 'review.read') {
   const db = getDb();
   const gid = graphId(req);
   let wid = wsId(req);
   if (gid) {
     const graph = db.prepare('SELECT id,workspace_id FROM graphs WHERE id=?').get(String(gid));
-    if (!graph || !validateGraphAccess(req, graph.id, { write })) {
+    if (!graph || !validateGraphAccess(req, graph.id, { write: false })) {
       res.status(403).json({ error: 'Graph access denied' });
       return null;
     }
     wid = graph.workspace_id;
   } else if (!validateWorkspaceAccess(req, wid)) {
     res.status(403).json({ error: 'Workspace access denied' });
+    return null;
+  }
+  if (req.user?.id !== 'anon' && !hasPermission(req, wid, permission, gid ? { graphId: String(gid), objectType: 'graph', objectId: String(gid) } : {})) {
+    res.status(403).json({ error: 'Permission denied', required: permission });
     return null;
   }
   return { db, wid, gid: gid ? String(gid) : null };
@@ -33,11 +38,31 @@ function serializeReview(db, row) {
     id: row.id, workspaceId: row.workspace_id, graphId: row.graph_id, number: row.n,
     authorId: row.author_id, executorId: row.executor_id, status: row.status,
     text: row.text, answer: row.answer, date: row.date, updatedAt: row.updated_at,
-    scopes: db.prepare(`SELECT id,project_id AS projectId,artifact_id AS artifactId,object_id AS objectId,version
+    scopes: db.prepare(`SELECT id,project_id AS projectId,epic_id AS epicId,feature_id AS featureId,
+      artifact_id AS artifactId,version_id AS versionId,fragment_id AS fragmentId,object_id AS objectId,version
       FROM review_scopes WHERE review_id=? ORDER BY created_at`).all(row.id),
     votes: db.prepare(`SELECT id,actor_id AS actorId,vote,comment,created_at AS createdAt
       FROM review_votes WHERE review_id=? ORDER BY created_at`).all(row.id)
   };
+}
+
+function validateScopeChain(db, workspaceId, item) {
+  const hierarchyIds = [item.epicId, item.featureId, item.artifactId, item.versionId, item.fragmentId];
+  if (![item.epicId, item.featureId, item.versionId, item.fragmentId].some(Boolean)) return;
+  if (!item.projectId || hierarchyIds.some(value => !value)) {
+    throw new Error('Full scope requires projectId, epicId, featureId, artifactId, versionId and fragmentId');
+  }
+  const chain = db.prepare(`SELECT p.id project_id,e.id epic_id,f.id feature_id,a.id artifact_id,
+    av.id version_id,fr.id fragment_id
+    FROM projects p JOIN epics e ON e.project_id=p.id
+    JOIN features f ON f.epic_id=e.id AND f.project_id=p.id
+    JOIN artifacts a ON a.feature_id=f.id AND a.project_id=p.id
+    JOIN artifact_versions av ON av.artifact_id=a.id
+    JOIN fragments fr ON fr.artifact_version_id=av.id
+    WHERE p.workspace_id=? AND p.id=? AND e.id=? AND f.id=? AND a.id=? AND av.id=? AND fr.id=?`).get(
+      workspaceId, item.projectId, item.epicId, item.featureId, item.artifactId, item.versionId, item.fragmentId
+    );
+  if (!chain) throw new Error('Review scope hierarchy is inconsistent or belongs to another workspace');
 }
 
 function findWritableReview(req, res, s) {
@@ -76,6 +101,7 @@ router.post('/reviews', authRequired, (req, res) => {
     const rawScopes = Array.isArray(req.body?.scopes) ? req.body.scopes : [req.body?.scope || {}];
     const scopes = rawScopes.filter(item => item && typeof item === 'object');
     if (!scopes.length) return res.status(400).json({ error: 'review scope required' });
+    for (const item of scopes) validateScopeChain(s.db, s.wid, item);
     const id = randomUUID();
     const author = actorId(req);
     const nextNumber = (s.db.prepare('SELECT COALESCE(MAX(n),0)+1 n FROM reviews WHERE workspace_id=?').get(s.wid)?.n || 1);
@@ -87,8 +113,13 @@ router.post('/reviews', authRequired, (req, res) => {
           'open', text, String(req.body?.answer || '').slice(0, 4000) || null
         );
       const insertScope = s.db.prepare(`INSERT INTO review_scopes
-        (id,review_id,workspace_id,project_id,artifact_id,object_id,version) VALUES (?,?,?,?,?,?,?)`);
-      for (const item of scopes) insertScope.run(randomUUID(), id, s.wid, item.projectId || null, item.artifactId || null, item.objectId || item.artifactId || null, item.version || null);
+        (id,review_id,workspace_id,project_id,epic_id,feature_id,artifact_id,version_id,fragment_id,object_id,version)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+      for (const item of scopes) insertScope.run(
+        randomUUID(), id, s.wid, item.projectId || null, item.epicId || null, item.featureId || null,
+        item.artifactId || null, item.versionId || null, item.fragmentId || null,
+        item.objectId || item.fragmentId || item.artifactId || null, item.version || null
+      );
       history(s.db, id, author, 'created', null, 'open', { scopes: scopes.length });
     })();
     res.status(201).json(serializeReview(s.db, s.db.prepare('SELECT * FROM reviews WHERE id=?').get(id)));
@@ -112,7 +143,7 @@ router.patch('/reviews/:id', authRequired, (req, res) => {
 
 router.post('/reviews/:id/transition', authRequired, (req, res) => {
   try {
-    const s = scope(req, res, true);
+    const s = scope(req, res, true, 'review.vote');
     if (!s) return;
     const row = findWritableReview(req, res, s);
     if (!row) return;
@@ -131,7 +162,7 @@ router.post('/reviews/:id/transition', authRequired, (req, res) => {
 
 router.post('/reviews/:id/votes', authRequired, (req, res) => {
   try {
-    const s = scope(req, res, true);
+    const s = scope(req, res, true, 'review.vote');
     if (!s) return;
     const row = findWritableReview(req, res, s);
     if (!row) return;

@@ -326,15 +326,60 @@ def main() -> int:
     _, metrics = request("GET", "/transformation-metrics", headers=graph_headers)
     assert metrics["resources"]["estimatedHours"] >= 13.5 and metrics["resources"]["budget"] >= 125000
     assert {item["layer"] for item in metrics["layers"]}.issuperset({"Implementation", "Knowledge"})
-    ok("Transformation Graph aggregates four-layer resource and financial metrics")
+    ok("Transformation metrics aggregate four-layer resource and financial data")
+
+    _, transformation = request("POST", "/transformation-sets", {
+        "projectId": created["projectId"], "name": "Smoke coordinated transformation"
+    }, headers=graph_headers, expected=(201,))
+    assert len(transformation["graphs"]) == 4
+    assert {item["layer"] for item in transformation["graphs"]} == {"Knowledge", "Implementation", "Project", "Resource"}
+    implementation_graph = next(item for item in transformation["graphs"] if item["layer"] == "Implementation")
+    knowledge_graph = next(item for item in transformation["graphs"] if item["layer"] == "Knowledge")
+    request("POST", f"/transformation-graphs/{implementation_graph['id']}/nodes", {"nodeId": first_id}, headers=graph_headers, expected=(201,))
+    request("POST", f"/transformation-graphs/{knowledge_graph['id']}/nodes", {"nodeId": second_id}, headers=graph_headers, expected=(201,))
+    request("POST", f"/transformation-sets/{transformation['id']}/alignments", {
+        "sourceGraphId": implementation_graph["id"], "sourceNodeId": first_id,
+        "targetGraphId": knowledge_graph["id"], "targetNodeId": second_id, "relation": "implements"
+    }, headers=graph_headers, expected=(201,))
+    _, transformation_detail = request("GET", f"/transformation-sets/{transformation['id']}", headers=graph_headers)
+    assert transformation_detail["invariant"] == {
+        "requiredLayers": ["Knowledge", "Implementation", "Project", "Resource"], "graphCount": 4, "complete": True
+    }
+    assert len({item["id"] for item in transformation_detail["graphs"]}) == 4 and len(transformation_detail["alignments"]) == 1
+    ok("Transformation Set contains four standalone coordinated graphs with cross-graph alignment")
+
+    _, second_project = request("POST", "/projects", {"name": "Shared Consumer Project"}, headers=create_headers, expected=(201,))
+    _, shared_resource = request("POST", "/workspace-resources", {
+        "name": "Shared domain contract", "type": "contract", "payload": {"version": 1}, "sourceGraphId": gid
+    }, headers=create_headers, expected=(201,))
+    for project_id in (created["projectId"], second_project["id"]):
+        request("POST", f"/workspace-resources/{shared_resource['id']}/projects/{project_id}", {"usageRole": "consumer"}, headers=create_headers, expected=(201,))
+        request("POST", f"/projects/{project_id}/shared-nodes/{first_id}", {"usageRole": "reference"}, headers=create_headers, expected=(201,))
+        _, shared = request("GET", f"/projects/{project_id}/shared-resources", headers=create_headers)
+        assert any(item["id"] == shared_resource["id"] for item in shared["resources"])
+        assert any(item["id"] == first_id for item in shared["nodes"])
+    ok("one workspace resource and one graph node are reused by two projects through M:N links")
+
+    _, epic = request("POST", "/epics", {"projectId": created["projectId"], "graphId": gid, "name": "Smoke Epic"}, headers=graph_headers, expected=(201,))
+    _, feature = request("POST", "/features", {"epicId": epic["id"], "graphId": gid, "name": "Smoke Feature"}, headers=graph_headers, expected=(201,))
+    _, artifact = request("POST", "/artifacts", {"featureId": feature["id"], "graphId": gid, "nodeId": first_id, "name": "Smoke Artifact"}, headers=graph_headers, expected=(201,))
+    _, artifact_version = request("POST", "/artifact-versions", {"artifactId": artifact["id"], "version": "v2"}, headers=graph_headers, expected=(201,))
+    _, fragment = request("POST", "/fragments", {"versionId": artifact_version["id"], "nodeId": second_id, "label": "Smoke Fragment"}, headers=graph_headers, expected=(201,))
 
     _, review = request("POST", "/reviews", {
         "text": "Smoke review for the edited graph",
         "executorId": service_actor["id"],
-        "scope": {"projectId": created["projectId"], "artifactId": first_id, "objectId": second_id, "version": "v2"}
+        "scope": {
+            "projectId": created["projectId"], "epicId": epic["id"], "featureId": feature["id"],
+            "artifactId": artifact["id"], "versionId": artifact_version["id"], "fragmentId": fragment["id"],
+            "objectId": second_id, "version": "v2"
+        }
     }, headers=graph_headers, expected=(201,))
     review_id = review["id"]
-    assert review["scopes"][0]["projectId"] == created["projectId"] and review["scopes"][0]["version"] == "v2"
+    review_scope = review["scopes"][0]
+    assert [review_scope[key] for key in ("projectId", "epicId", "featureId", "artifactId", "versionId", "fragmentId")] == [
+        created["projectId"], epic["id"], feature["id"], artifact["id"], artifact_version["id"], fragment["id"]
+    ]
     request("POST", f"/reviews/{review_id}/votes", {"actorId": service_actor["id"], "vote": "approve", "comment": "Verified"}, headers=graph_headers, expected=(201,))
     _, started_review = request("POST", f"/reviews/{review_id}/transition", {"event": "start"}, headers=graph_headers)
     assert started_review["to"] == "in_review"
@@ -344,7 +389,37 @@ def main() -> int:
     assert {item["event"] for item in review_history}.issuperset({"created", "vote", "start", "approve"})
     _, reviews = request("GET", "/reviews", headers=graph_headers)
     assert any(item["id"] == review_id and item["status"] == "approved" for item in reviews)
-    ok("ReviewScope, author/executor, voting, approval FSM and immutable history")
+    ok("full Project→Epic→Feature→Artifact→Version→Fragment ReviewScope, voting, FSM and history")
+
+    _, roles = request("GET", "/rbac/roles", headers=create_headers)
+    assert {item["name"] for item in roles} == {"viewer", "reviewer", "editor", "workspace_admin"}
+    viewer_role = next(item for item in roles if item["name"] == "viewer")
+    _, effective = request("GET", f"/rbac/effective?graph_id={gid}", headers=create_headers)
+    assert {"graph.read", "graph.write", "review.vote", "rbac.manage", "audit.read"}.issubset(set(effective["permissions"]))
+    request("POST", "/rbac/memberships", {"userId": other_auth["user"]["id"], "membershipRole": "member"}, headers=create_headers, expected=(201,))
+    request("POST", "/rbac/assignments", {
+        "userId": other_auth["user"]["id"], "roleId": viewer_role["id"], "scopeType": "workspace", "scopeId": own_ws
+    }, headers=create_headers, expected=(201,))
+    viewer_headers = {"Authorization": f"Bearer {other_auth['token']}", "X-Workspace-Id": own_ws, "X-Graph-Id": gid}
+    _, viewer_nodes = request("GET", "/graph/nodes", headers=viewer_headers)
+    assert any(item["id"] == first_id for item in viewer_nodes)
+    request("PATCH", f"/graph/nodes/{first_id}", {"label": "viewer cannot edit"}, headers=viewer_headers, expected=(403,))
+    _, acl = request("POST", "/rbac/acl", {
+        "objectType": "graph", "objectId": gid, "subjectType": "user", "subjectId": auth["user"]["id"],
+        "permission": "graph.write", "effect": "deny"
+    }, headers=create_headers, expected=(201,))
+    request("PATCH", f"/graph/nodes/{first_id}", {"label": "ACL must block this"}, headers=graph_headers, expected=(403,))
+    request("DELETE", f"/rbac/acl/{acl['id']}", headers=create_headers)
+    _, after_acl = request("PATCH", f"/graph/nodes/{first_id}", {"label": "Smoke API Gateway v3"}, headers=graph_headers)
+    assert after_acl["label"].endswith("v3")
+    _, audit_log = request("GET", "/rbac/audit-log", headers=create_headers)
+    assert any(item["action"] == "rbac.acl.write" and item["decision"] == "allow" for item in audit_log)
+    ok("inherited RBAC matrix, viewer read-only role, object-level deny priority and security audit log")
+
+    _, ai_capabilities = request("GET", "/ai/capabilities")
+    assert ai_capabilities["offlineAi"]["classification"] == "optional architecture extension"
+    assert ai_capabilities["offlineAi"]["enabled"] is False and ai_capabilities["offlineAi"]["sendsDataExternally"] is False
+    ok("Offline AI is explicitly optional, disabled by default and documented by ADR")
 
     _, template = request("POST", f"/workspaces/{own_ws}/templates", {
         "name": "Smoke reproducible template",

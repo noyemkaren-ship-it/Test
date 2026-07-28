@@ -206,6 +206,34 @@ const migrations = [
       db.exec('CREATE INDEX idx_edges_ws_tab ON edges(workspace_id,tab)');
       db.exec('CREATE INDEX idx_edges_graph ON edges(graph_id)');
     }
+  },
+  {
+    version: 8,
+    name: 'complete-review-scope-hierarchy',
+    up(db) {
+      addColumn(db, 'review_scopes', 'epic_id TEXT REFERENCES epics(id)');
+      addColumn(db, 'review_scopes', 'feature_id TEXT REFERENCES features(id)');
+      addColumn(db, 'review_scopes', 'version_id TEXT REFERENCES artifact_versions(id)');
+      addColumn(db, 'review_scopes', 'fragment_id TEXT REFERENCES fragments(id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_review_hierarchy ON review_scopes(project_id,epic_id,feature_id,artifact_id,version_id,fragment_id)');
+    }
+  },
+  {
+    version: 9,
+    name: 'coordinated-transformation-and-workspace-sharing',
+    up(db) {
+      db.exec('CREATE INDEX IF NOT EXISTS idx_transformation_sets_project ON transformation_sets(workspace_id,project_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_workspace_resources_ws ON workspace_resources(workspace_id)');
+    }
+  },
+  {
+    version: 10,
+    name: 'hierarchical-rbac-and-object-acl',
+    up(db) {
+      db.exec('CREATE INDEX IF NOT EXISTS idx_rbac_assignments_user ON rbac_assignments(workspace_id,user_id,scope_type,scope_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_object_acl_object ON object_acl(workspace_id,object_type,object_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_security_audit_ws ON security_audit_log(workspace_id,created_at)');
+    }
   }
 ];
 

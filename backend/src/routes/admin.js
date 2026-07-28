@@ -28,7 +28,7 @@ router.get('/admin/summary', (req, res) => {
       },
       recentQuestions,
       rateLimit: getRateLimitStats(),
-      version: '3.1.0'
+      version: '3.2.0'
     });
   } catch (e) {
     console.error('Admin summary error:', e.message);

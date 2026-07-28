@@ -1,4 +1,5 @@
 import { getDb as getDatabase, setDb as setDatabase } from '../db/database.js';
+import { hasPermission } from '../services/authorization.js';
 
 export const getDb = getDatabase;
 export const setDb = setDatabase;
@@ -42,7 +43,12 @@ export function validateGraphAccess(req, targetGraphId, { write = false } = {}) 
   const graph = getDb().prepare('SELECT workspace_id, visibility FROM graphs WHERE id = ?').get(targetGraphId);
   if (!graph) return false;
   if (!write && graph.visibility !== 'private') return true;
-  return validateWorkspaceAccess(req, graph.workspace_id);
+  if (!validateWorkspaceAccess(req, graph.workspace_id)) return false;
+  return hasPermission(req, graph.workspace_id, write ? 'graph.write' : 'graph.read', {
+    graphId: targetGraphId,
+    objectType: 'graph',
+    objectId: targetGraphId
+  });
 }
 
 export function validateReadAccess(req, targetWsId, targetGraphId = null) {
@@ -98,7 +104,7 @@ export function validateSecrets() {
     if (!process.env.API_KEY || process.env.API_KEY === 'dev-api-key') {
       throw new Error('API_KEY must be set in production');
     }
-    if (!process.env.OFFLINE_AI_KEY || ['offline-dev-key', 'change-me-offline-key'].includes(process.env.OFFLINE_AI_KEY)) {
+    if (process.env.OFFLINE_AI_ENABLED === '1' && (!process.env.OFFLINE_AI_KEY || ['offline-dev-key', 'change-me-offline-key'].includes(process.env.OFFLINE_AI_KEY))) {
       throw new Error('OFFLINE_AI_KEY must be set in production');
     }
     if (!String(process.env.CORS_ORIGINS || '').trim()) {

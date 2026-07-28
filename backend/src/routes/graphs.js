@@ -11,6 +11,7 @@ import {
 } from '../services/knowledgePackage.js';
 import { ensureWorkspaceProject } from '../services/hierarchy.js';
 import { materializeOntologyTypes } from '../services/ontologyTypes.js';
+import { hasPermission } from '../services/authorization.js';
 
 const router = Router();
 const importLimiter = createRateLimiter({
@@ -90,6 +91,7 @@ router.post('/graphs/import', authRequired, importLimiter, (req, res) => {
     const db = getDb();
     const wid = wsId(req);
     if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
+    if (!hasPermission(req, wid, 'graph.write')) return res.status(403).json({ error: 'Permission denied', required: 'graph.write' });
     const rawPackage = req.body?.package ?? req.body;
     const result = importPrivateKnowledgePackage(db, wid, rawPackage, { sourceFileName: req.body?.sourceFileName });
     res.status(201).json(result);
@@ -105,6 +107,7 @@ router.post('/graphs', authRequired, (req, res) => {
     const db = getDb();
     const wid = wsId(req);
     if (!validateWorkspaceAccess(req, wid)) return res.status(403).json({ error: 'Access denied' });
+    if (!hasPermission(req, wid, 'graph.write')) return res.status(403).json({ error: 'Permission denied', required: 'graph.write' });
 
     const { name, description, visibility = 'public', projectId } = req.body || {};
     if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'name required' });
@@ -139,7 +142,7 @@ router.patch('/graphs/:id', authRequired, (req, res) => {
     const db = getDb();
     const graph = db.prepare('SELECT * FROM graphs WHERE id = ?').get(req.params.id);
     if (!graph) return res.status(404).json({ error: 'Graph not found' });
-    if (!validateWorkspaceAccess(req, graph.workspace_id)) return res.status(403).json({ error: 'Access denied' });
+    if (!validateGraphAccess(req, graph.id, { write: true })) return res.status(403).json({ error: 'Graph write access denied' });
 
     const name = req.body?.name == null ? graph.name : String(req.body.name).trim();
     const description = req.body?.description == null ? graph.description : String(req.body.description).trim();
@@ -164,7 +167,7 @@ router.delete('/graphs/:id', authRequired, (req, res) => {
     const db = getDb();
     const graph = db.prepare('SELECT * FROM graphs WHERE id = ?').get(req.params.id);
     if (!graph) return res.status(404).json({ error: 'Graph not found' });
-    if (!validateWorkspaceAccess(req, graph.workspace_id)) return res.status(403).json({ error: 'Access denied' });
+    if (!validateWorkspaceAccess(req, graph.workspace_id) || !hasPermission(req, graph.workspace_id, 'graph.manage', { graphId: graph.id, objectType: 'graph', objectId: graph.id })) return res.status(403).json({ error: 'Permission denied', required: 'graph.manage' });
     db.prepare('DELETE FROM graphs WHERE id = ?').run(graph.id);
     res.json({ ok: true });
   } catch (e) {

@@ -8,6 +8,7 @@ import { answerLocal } from '../ai/copilot.js';
 import { validateChatBody } from '../middleware/security.js';
 import { authRequired } from '../middleware/auth.js';
 import { rankChunks } from '../engines/rag.js';
+import { hasPermission } from '../services/authorization.js';
 
 const router = Router();
 
@@ -44,6 +45,9 @@ router.post('/copilot/chat', validateChatBody, async (req, res) => {
 
     const wid = graphMeta?.workspace_id || requestedWid;
     const hasWorkspaceAccess = authenticated && validateWorkspaceAccess(req, wid);
+    if (hasWorkspaceAccess && !hasPermission(req, wid, 'ai.use', gid ? { graphId: gid, objectType: 'graph', objectId: gid } : {})) {
+      return res.status(403).json({ error: 'Permission denied', required: 'ai.use' });
+    }
     const storeAdapter = createStoreAdapter(wid, { graphId: gid || null, publicOnly: !hasWorkspaceAccess });
     const context = buildContext({ store: storeAdapter, actorId, selectedNodeIds, role });
     if (tab) context.nodes = context.nodes.filter(n => !n.tab || n.tab === tab);

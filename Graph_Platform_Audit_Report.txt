@@ -1,9 +1,9 @@
-ТЕХНИЧЕСКИЙ АУДИТ GRAPH PLATFORM 3.1.0
+ТЕХНИЧЕСКИЙ АУДИТ GRAPH PLATFORM 3.2.0
 Относительно Graph_Platform_Requirements.md
-Дата проверки: 27.07.2026
+Дата проверки: 28.07.2026
 Репозиторий: /Users/karengevorgyan/Documents/boo/graph-platform
-Базовый commit: 4b302ee48fb6ccb275d2d2e82ca046d5f4bdb5e4
-Объект проверки: текущее рабочее дерево с изменениями версии 3.1.0
+Базовый commit: e1ea64c6ef7cdeded1244c29ecf3da296b986102
+Объект проверки: текущее рабочее дерево с изменениями версии 3.2.0
 
 Правило отчёта: ниже отмечено только то, что подтверждено файлами, применённой SQLite-схемой, HTTP-запросами или выводом команд. PostgreSQL исключён из требований по прямому указанию заказчика; согласованная БД — SQLite WAL.
 
@@ -30,7 +30,7 @@ Lock-файлы: backend/package-lock.json и frontend/package-lock.json.
 added 48 packages, and audited 49 packages in 1s
 found 0 vulnerabilities
 
-added 120 packages, and audited 121 packages in 18s
+added 120 packages, and audited 121 packages in 14s
 found 0 vulnerabilities
 ```
 
@@ -40,7 +40,7 @@ found 0 vulnerabilities
 
 ```text
 $ npm list --depth=0
-graph-platform-backend@3.1.0
+graph-platform-backend@3.2.0
 ├── bcryptjs@2.4.3
 ├── better-sqlite3@11.10.0
 ├── cors@2.8.6
@@ -49,7 +49,7 @@ graph-platform-backend@3.1.0
 ```
 
 Фреймворк: Express 4.22.2.
-Версия приложения: 3.1.0.
+Версия приложения: 3.2.0.
 Порт по умолчанию: 3001 (`Number(process.env.PORT || 3001)`).
 Фактический изолированный порт аудита: 31991.
 
@@ -59,7 +59,7 @@ graph-platform-backend@3.1.0
 
 ```text
 $ npm list --depth=0
-graph-platform-frontend@3.1.0
+graph-platform-frontend@3.2.0
 ├── @types/react-dom@18.3.7
 ├── @types/react@18.3.31
 ├── @vitejs/plugin-react@6.0.4
@@ -103,12 +103,12 @@ _db.pragma('busy_timeout = 5000');
 
 ```text
 $ python3 -c "import yaml; ..."
-version 3.1.0
-paths 85
-operations 121
+version 3.2.0
+paths 108
+operations 146
 
 $ wc -l -c backend/openapi.yaml
-248 21762 backend/openapi.yaml
+296 26221 backend/openapi.yaml
 
 $ curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:3110/api/openapi.yaml
 HTTP 200
@@ -128,7 +128,10 @@ SQLite → PostgreSQL: ❌ не выполнялась, поскольку Postg
   {"version":4,"name":"execution-object-scoping"},
   {"version":5,"name":"copilot-question-semantics"},
   {"version":6,"name":"customer-owner-separation"},
-  {"version":7,"name":"edge-endpoint-foreign-keys"}
+  {"version":7,"name":"edge-endpoint-foreign-keys"},
+  {"version":8,"name":"complete-review-scope-hierarchy"},
+  {"version":9,"name":"coordinated-transformation-and-workspace-sharing"},
+  {"version":10,"name":"hierarchical-rbac-and-object-acl"}
 ]
 ```
 
@@ -145,9 +148,11 @@ SQLite → PostgreSQL: ❌ не выполнялась, поскольку Postg
 Команда выполнялась на изолированной БД после старта backend:
 
 ```text
-TABLES=40
+TABLES=58
 actors
 answers
+artifact_versions
+artifacts
 change_artifacts
 changes
 chunks
@@ -156,6 +161,9 @@ decisions
 documents
 edge_types
 edges
+epics
+features
+fragments
 graphs
 issue_pipes
 issues
@@ -163,11 +171,14 @@ memberships
 node_types
 nodes
 ontology
+object_acl
 pipe_work_items
 pipes
 portfolios
 programs
 projects
+project_node_links
+project_resource_links
 questions
 ratings
 reasoning_steps
@@ -177,15 +188,25 @@ review_scopes
 review_votes
 reviews
 role_bindings
+rbac_assignments
+rbac_permissions
+rbac_role_permissions
+rbac_roles
 schema_migrations
+security_audit_log
 self_host_sources
 sprint_pipes
 sprint_work_items
 sprints
 templates
+transformation_alignments
+transformation_graph_nodes
+transformation_graphs
+transformation_sets
 users
 work_items
 workspaces
+workspace_resources
 ```
 
 `PRAGMA foreign_key_check`:
@@ -357,7 +378,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 ### 2.14 ReviewScope
 
 ✅ Таблица `review_scopes` существует.
-✅ Scope хранит Project → Artifact → Object → Version.
+✅ Scope хранит Project → Epic → Feature → Artifact → Version → Fragment.
 
 ```sql
 CREATE TABLE IF NOT EXISTS review_scopes (
@@ -365,6 +386,11 @@ CREATE TABLE IF NOT EXISTS review_scopes (
   review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  epic_id TEXT REFERENCES epics(id) ON DELETE SET NULL,
+  feature_id TEXT REFERENCES features(id) ON DELETE SET NULL,
+  artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+  version_id TEXT REFERENCES artifact_versions(id) ON DELETE SET NULL,
+  fragment_id TEXT REFERENCES fragments(id) ON DELETE SET NULL,
 ```
 
 Дополнительно существуют `review_history` и `review_votes`.
@@ -449,7 +475,7 @@ CREATE TABLE IF NOT EXISTS answers (
 
 ```text
 Таблиц есть / нужно по ТЗ: 19 / 19
-Всего прикладных таблиц в SQLite: 40
+Всего прикладных таблиц в SQLite: 58
 Таблиц из списка ТЗ, присутствующих только в коде, но не в БД: 0
 Отсутствующих таблиц из списка ТЗ: 0
 ```
@@ -461,17 +487,17 @@ CREATE TABLE IF NOT EXISTS answers (
 Runtime-инвентаризация Express:
 
 ```text
-ROUTES=121
+ROUTES=146
 ```
 
 OpenAPI:
 
 ```text
-paths=85
-operations=121
+paths=108
+operations=146
 ```
 
-Итог: 121 / 121 runtime-операций отражены в OpenAPI.
+Итог: 146 / 146 runtime-операций отражены в OpenAPI.
 
 ### 3.2 Health / список движков
 
@@ -480,7 +506,7 @@ curl -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:3110/api/health
 ```
 
 ```text
-{"ok":true,"version":"3.1.0","db":"sqlite","graphs":10,"llmConfigured":false,"llmMode":"offline-first","engines":["Graph","FSM","Review","Ontology","RAG","Visualization","Execution","Hybrid Offline AI","Auth","Workspace","Templates"],"publicDomains":true,"tenantIsolation":"membership + public-read"}
+{"ok":true,"version":"3.2.0","db":"sqlite","graphs":10,"llmConfigured":false,"llmMode":"hybrid","offlineAiOptional":true,"offlineAiEnabled":false,"engines":["Graph","FSM","Review","Ontology","RAG","Visualization","Execution","Transformation Coordination","RBAC/ACL","Optional Offline AI","Auth","Workspace","Templates"],"publicDomains":true,"tenantIsolation":"membership + public-read"}
 HTTP 200
 ```
 
@@ -836,40 +862,47 @@ Smoke:
 
 ✅ Выполнено.
 
-Слои:
+Схема содержит четыре отдельные сущности координации:
 
 ```text
-Knowledge, Implementation, Project, Resource
+transformation_sets
+transformation_graphs
+transformation_graph_nodes
+transformation_alignments
 ```
 
-Маршрут `/api/transformation-metrics` агрегирует узлы, часы, бюджет и критический путь.
+Ограничение `UNIQUE(set_id, layer)` и CHECK по четырём значениям создают в одном Transformation Set четыре самостоятельных графа с разными ID:
+
+```text
+Knowledge | Implementation | Project | Resource
+```
+
+`transformation_graph_nodes` хранит независимый состав каждого графа. `transformation_alignments` согласует узлы разных графов; CHECK запрещает alignment графа с самим собой. API создания Transformation Set транзакционно создаёт 4/4 графа. Метрики отдельно агрегируют часы, бюджет и критический путь.
 
 Smoke:
 
 ```text
-[OK] Transformation Graph aggregates four-layer resource and financial metrics
+[OK] Transformation metrics aggregate four-layer resource and financial data
+[OK] Transformation Set contains four standalone coordinated graphs with cross-graph alignment
 ```
 
 ### 4.5 Review как объект первого класса
 
 ✅ Выполнено.
 
-Факты:
+Полная область ревью:
 
 ```text
-reviews
-review_scopes
-review_history
-review_votes
-author_id
-executor_id
-status FSM
+Project → Epic → Feature → Artifact → Version → Fragment
 ```
+
+Физические таблицы: `epics`, `features`, `artifacts`, `artifact_versions`, `fragments`, `review_scopes`.
+`POST /api/reviews` проверяет всю цепочку одним JOIN и отклоняет неполную либо межworkspace-цепочку. Сохраняются author, executor, status FSM, votes и immutable history. Сервис нормализации перевёл 4/4 seed-review scopes в полную шестиступенчатую модель.
 
 Smoke:
 
 ```text
-[OK] ReviewScope, author/executor, voting, approval FSM and immutable history
+[OK] full Project→Epic→Feature→Artifact→Version→Fragment ReviewScope, voting, FSM and history
 ```
 
 ### 4.6 Execution Graph
@@ -1018,6 +1051,14 @@ Smoke:
 [OK] Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback
 ```
 
+Offline AI отделён от базового требования. `OFFLINE_AI_ENABLED=0` по умолчанию. `AI_EXECUTION_MODE` имеет явные режимы `hybrid | external | offline | local`. Причина расширения, границы данных и opt-out зафиксированы в `docs/adr/ADR-002-offline-ai.md` и возвращаются `GET /api/ai/capabilities`.
+
+Smoke:
+
+```text
+[OK] Offline AI is explicitly optional, disabled by default and documented by ADR
+```
+
 ### 4.16 Workspace-иерархия
 
 ✅ Выполнено.
@@ -1034,7 +1075,50 @@ graphs.project_id
 
 Новый граф и импортированный JSON-граф автоматически получают Project в Default Program / Default Portfolio, если projectId не передан.
 
-### 4.17 Итог по 16 требованиям
+Повторное использование реализовано M:N-таблицами:
+
+```text
+workspace_resources
+project_resource_links
+project_node_links
+```
+
+Один Workspace Resource и один Node могут быть связаны с несколькими Project без копирования объекта. Smoke связал одну сущность с двумя разными проектами и прочитал её из обоих:
+
+```text
+[OK] one workspace resource and one graph node are reused by two projects through M:N links
+```
+
+### 4.17 RBAC / банковский сценарий
+
+✅ Выполнено на уровне проверяемой модели доступа.
+
+Таблицы:
+
+```text
+rbac_roles
+rbac_permissions
+rbac_role_permissions
+rbac_assignments
+object_acl
+security_audit_log
+```
+
+Наследование:
+
+```text
+viewer → reviewer → editor → workspace_admin
+```
+
+Матрица содержит отдельные права `workspace.*`, `project.*`, `graph.*`, `review.*`, `rag.*`, `ai.use`, `rbac.manage`, `audit.read`. Assignment ограничивается workspace/project/graph/object. Явный `object_acl deny` имеет приоритет над наследуемым allow. Graph mutations, Review mutations, Copilot, Project/Template и Graph management вызывают проверку соответствующего permission. Изменения RBAC записываются в `security_audit_log`.
+
+Smoke:
+
+```text
+[OK] inherited RBAC matrix, viewer read-only role, object-level deny priority and security audit log
+```
+
+### 4.18 Итог по 16 требованиям
 
 ```text
 Функционально выполнено: 16 / 16
@@ -1055,7 +1139,7 @@ sh scripts/audit.sh
 [1/9] Reproducible dependencies
 added 48 packages, and audited 49 packages in 1s
 found 0 vulnerabilities
-added 120 packages, and audited 121 packages in 18s
+added 120 packages, and audited 121 packages in 14s
 found 0 vulnerabilities
 
 [2/9] Dependency security audit
@@ -1063,10 +1147,10 @@ found 0 vulnerabilities
 found 0 vulnerabilities
 
 [3/9] Frontend TypeScript
-> graph-platform-frontend@3.1.0 check
+> graph-platform-frontend@3.2.0 check
 > tsc --noEmit
 
-> graph-platform-frontend@3.1.0 test:layout
+> graph-platform-frontend@3.2.0 test:layout
 > node --test test/graph-layout.test.mjs
 ✔ keeps an already safe layout unchanged
 ✔ separates duplicate and too-close coordinates
@@ -1080,11 +1164,11 @@ vite v8.1.5 building client environment for production...
 ✓ 192 modules transformed.
 dist/index.html                   0.68 kB │ gzip:   0.39 kB
 dist/assets/index-cxpchSCP.css   94.85 kB │ gzip:  18.75 kB
-dist/assets/index-BCJG9Qmt.js   437.00 kB │ gzip: 134.53 kB
-✓ built in 1.28s
+dist/assets/index-CcROsUC7.js   438.50 kB │ gzip: 134.89 kB
+✓ built in 464ms
 
 [5/9] Backend JavaScript syntax (all source files)
-Checked backend files: 38
+Checked backend files: 40
 
 [6/9] SQLite schema and versioned migrations
 ✔ SQLite schema and all versioned migrations are applied
@@ -1103,7 +1187,7 @@ Backend ready on temporary port 31991
 [OK] health v3
 [OK] public catalog without auth (10 domains)
 [OK] internal validation ecosystems and self-hosting graph
-[OK] self-hosting repository sync (72 sources)
+[OK] self-hosting repository sync (74 sources)
 [OK] OpenAPI specification is served
 [OK] built-in Dentist Choice graph (22 nodes, 26 relations)
 [OK] seeded reviews have normalized ReviewScope and status
@@ -1137,8 +1221,12 @@ Backend ready on temporary port 31991
 [OK] Issue to WorkItem hierarchy, metrics and persisted FSM transition
 [OK] Change links SQL/test perspectives and stores executor metrics
 [OK] Portfolio/Program/Project/Pipe/Release graph and independent Sprint-Pipe M:N links
-[OK] Transformation Graph aggregates four-layer resource and financial metrics
-[OK] ReviewScope, author/executor, voting, approval FSM and immutable history
+[OK] Transformation metrics aggregate four-layer resource and financial data
+[OK] Transformation Set contains four standalone coordinated graphs with cross-graph alignment
+[OK] one workspace resource and one graph node are reused by two projects through M:N links
+[OK] full Project→Epic→Feature→Artifact→Version→Fragment ReviewScope, voting, FSM and history
+[OK] inherited RBAC matrix, viewer read-only role, object-level deny priority and security audit log
+[OK] Offline AI is explicitly optional, disabled by default and documented by ADR
 [OK] template snapshot preserves graph and layout
 [OK] Copilot persists Conversation, Question, Answer, Reasoning, Decision and usage feedback
 [OK] delete relation
@@ -1152,7 +1240,7 @@ Graph Platform v3 smoke test passed.
 AUDIT RESULT: PASS
 ```
 
-Количество smoke-проверок: 47.
+Количество smoke-проверок: 51.
 Ошибок smoke: 0.
 
 ### 5.3 Предупреждение npm
@@ -1170,20 +1258,32 @@ npm warn deprecated prebuild-install@7.1.3: No longer maintained.
 ```text
 Сущности ТЗ в применённой SQLite БД: 19 / 19
 Функциональные требования ТЗ: 16 / 16
-Runtime API-операции: 121
-Операции в OpenAPI: 121 / 121
-Версионированные миграции: 7 / 7 применены
+Runtime API-операции: 146
+Операции в OpenAPI: 146 / 146
+Версионированные миграции: 10 / 10 применены
 Layout tests: 3 / 3 pass
 Backend tests: 2 / 2 pass
-API smoke: 47 / 47 pass
+API smoke: 51 / 51 pass
 TypeScript: exit code 0
 Production build: exit code 0
-Backend syntax: 38 / 38 файлов прошли node --check
+Backend syntax: 40 / 40 файлов прошли node --check
 Python syntax: 3 / 3 файла прошли py_compile
 Frontend npm audit: 0 vulnerabilities
 Backend npm audit: 0 vulnerabilities
 PostgreSQL: не реализован по согласованному исключению
 Фактическая БД: SQLite WAL
+```
+
+## 7. Проверка пяти замечаний от 28.07.2026
+
+```text
+1. Transformation Graph: ✅ 4 самостоятельных графа + общие Node ID + alignment API.
+2. Review Scope: ✅ Project → Epic → Feature → Artifact → Version → Fragment.
+3. Workspace reuse: ✅ один Resource/Node связан с двумя Project через M:N.
+4. RBAC: ✅ матрица прав + наследование + scoped assignments + object ACL + audit log.
+5. Offline AI: ✅ оформлен как отключаемое расширение, disabled by default, ADR + runtime capabilities.
+
+Закрыто фактическими HTTP-проверками: 5 / 5.
 ```
 
 Конец отчёта.
